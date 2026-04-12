@@ -1,6 +1,9 @@
 # RateLimitRefugees — Stokvel Management Platform
-
 A web-based platform for managing South African stokvel groups — contributions, payouts, meetings, and financial insights.
+
+## Deployed App
+https://rate-limit-refugees.netlify.app
+
 
 ## Group Members
 - Muhammed Abed
@@ -58,5 +61,5 @@ If you see **"Stokvel App — Welcome! We are live."** you are good to go.
 
 ---
 
-##Trello Link
+## Trello Link
 https://trello.com/b/D91GBp4E/stokvel-project-sprint-1
