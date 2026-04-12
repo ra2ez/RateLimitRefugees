@@ -2,7 +2,7 @@
 A web-based platform for managing South African stokvel groups — contributions, payouts, meetings, and financial insights.
 
 ## Deployed App
-https://rate-limit-refugees.netlify.app
+https://stokvelmanagement.netlify.app/login
 
 
 ## Group Members
