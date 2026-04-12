@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Link } from 'react-router-dom'
+import bgImage from '../assets/background_home.jpg'
 
 const s = {
   page:        { minHeight:'100vh', display:'flex', fontFamily:"'Georgia','Times New Roman',serif", background:'#fff', color:'#191c1d' },
 
   // LEFT PANEL
   left:        { width:'48%', display:'flex', flexDirection:'column', justifyContent:'space-between', padding:'40px 44px', position:'relative', overflow:'hidden' },
-  leftBg:      { position:'absolute', inset:0, background:'url("/src/assets/background_home.jpg") center/cover no-repeat' },
+  leftBg: { position:'absolute', inset:0, background:`url(${bgImage}) center/cover no-repeat` },
   leftOverlay: { position:'absolute', inset:0, background:'linear-gradient(160deg,rgba(0,26,11,0.99),rgba(1,68,33,0.90))' },
   leftContent: { position:'relative', zIndex:1, display:'flex', flexDirection:'column', height:'100%', justifyContent:'space-between' },
   brand:       { display:'flex', alignItems:'center', gap:'10px' },
