@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom' 
 import bgImage from '../assets/background_home.jpg'
 
 const s = {
