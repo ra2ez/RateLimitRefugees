@@ -23,5 +23,5 @@ jobs:
         working-directory: stokvel-app
 
       - name: Run tests with coverage
-        run: npm test -- --coverage --watchAll=false
+        run: npm run test:coverage
         working-directory: stokvel-app
