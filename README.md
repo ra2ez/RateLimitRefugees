@@ -55,16 +55,8 @@ If you see **"Stokvel App — Welcome! We are live."** you are good to go.
 ## Branch Structure
 - `main` — stable, working code only
 - `feature/setup` — initial project setup (React, Tailwind, Supabase)
-- Each member works on their own branch and opens a pull request to merge into main
 
 ---
-
-## Important Rules
-- Never push directly to `main`
-- Never share the `.env` file or commit it to GitHub
-- Always `git pull` before starting work
-- Commit often with clear messages describing what you changed
-- All frontend work goes inside the `stokvel-app/src` folder
 
 ##Trello Link
 https://trello.com/b/D91GBp4E/stokvel-project-sprint-1
