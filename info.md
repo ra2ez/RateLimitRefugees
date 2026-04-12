@@ -65,3 +65,6 @@ If you see **"Stokvel App — Welcome! We are live."** you are good to go.
 - Always `git pull` before starting work
 - Commit often with clear messages describing what you changed
 - All frontend work goes inside the `stokvel-app/src` folder
+
+##Trello Link
+https://trello.com/b/D91GBp4E/stokvel-project-sprint-1
