@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Login from './pages/Login'
-import SignUp from './pages/signUp'
+import SignUp from './pages/SignUp'
 import ForgotPassword from './pages/ForgotPassword'
 
 
