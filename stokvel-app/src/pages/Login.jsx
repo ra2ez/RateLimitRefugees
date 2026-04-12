@@ -53,6 +53,15 @@ export default function Login() {
     setLoading(false)
   }
 
+  const handleGithubLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'github',
+    options: {
+      redirectTo: window.location.origin + '/dashboard'
+    }
+  })
+}
+
   return (
     <div style={s.page}>
       {/* Left panel — hidden on mobile via inline media would need CSS; shown always here for simplicity */}
@@ -105,6 +114,9 @@ export default function Login() {
           <div style={s.divRow}>
             <div style={s.divLine} /><span style={s.divTxt}>or</span><div style={s.divLine} />
           </div>
+          <button onClick={handleGithubLogin} style={{ ...s.btn, background: '#24292e', marginTop: '0' }}>
+            Sign in with GitHub
+          </button>
           <p style={s.footer}>
             New here? <Link to="/signup" style={s.link}>Create an account</Link>
           </p>
