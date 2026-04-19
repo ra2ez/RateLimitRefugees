@@ -84,7 +84,7 @@ export default function Home() {
               Stokvel Management Platform
             </div>
             <p className="text-xs uppercase tracking-widest text-emerald-200/60 max-w-xs leading-loose">
-              © 2024 THE Stokvel Management Platform. DIGITIZING THE LEGACY OF COMMUNAL TRUST.
+              © 2026 Rate Limit Refugees. DIGITIZING THE LEGACY OF COMMUNAL TRUST.
             </p>
             <div className="flex gap-4">
               <a className="text-emerald-200/50 hover:text-amber-500 transition-colors" href="#">
