@@ -7,8 +7,7 @@ Attendees: All group members
 Agenda:
 - Dry run demo
 - Individual retrospective notes
-- Check commit history
-
+- 
 Decisions:
 - Demo order: 6 stories live, then UML
 - Each member wrote down contributions:
@@ -19,8 +18,3 @@ Decisions:
   - Member A: pushed for layered architecture
   - Member B: chose Netlify over Azure
   - Member C: preferred sequence over activity diagrams
-- Each writes 200+ word retrospective with commit references
-
-Next:
-- Submit retrospectives before Meeting 5
-- Final rehearsal tomorrow
