@@ -20,11 +20,7 @@ Decisions:
   - Scenarios: use case
 - Fixed mismatch between sequence diagram and code
 - All 6 stories done, tested, merged
-- CI deploys to Netlify; GitHub release tagged sprint-2
-- Practiced questions:
-  - "Why this architecture?" → Layered MVC
-  - "How do diagrams match code?" → Mapped to actual package names
+- CI deploys to Netlify; GitHub release tagged sprint-2 before sprint viva
 
 Next:
 - Polish README and UML doc
-- Prep demo
