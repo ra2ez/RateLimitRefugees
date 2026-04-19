@@ -11,7 +11,7 @@ https://stokvelplatform.netlify.app/
 - Raees Mia Bala
 - Huzaifa Majeed
 - Irfaan Fulat
-- Ahmed Majeed
+- Ahmed Majeed.
 
 ---
 
