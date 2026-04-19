@@ -1,6 +1,5 @@
 Meeting 1 – Sprint 2 Planning
 
-Date: [Insert date]
 Duration: 1 hour
 Attendees: All group members
 
@@ -18,7 +17,6 @@ Decisions:
   - Member A: Logical + Process views
   - Member B: Development + Physical views
   - Member C: Scenarios view
-- Write unit tests before code
 - CI runs on every push; Netlify deployment at sprint end
 
 Next:
