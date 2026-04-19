@@ -14,7 +14,7 @@ export default function Groups() {
 
         {/* Add your groups content here */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/ Group cards will go here */}
+          {/* Group cards will go here */}
         </div>
       </div>
     </section>
