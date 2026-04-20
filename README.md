@@ -62,5 +62,5 @@ If you see **"Stokvel App — Welcome! We are live."** you are good to go.
 ---
 
 ## Trello Link
-https://trello.com/b/D91GBp4E/stokvel-project-sprint-1
-https://trello.com/b/L3CVZvJX/stokvel-project-sprint-2
+- https://trello.com/b/D91GBp4E/stokvel-project-sprint-1
+- https://trello.com/b/L3CVZvJX/stokvel-project-sprint-2
