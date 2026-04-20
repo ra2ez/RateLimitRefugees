@@ -51,7 +51,7 @@ describe('Dashboard', () => {
 
   it('renders Heritage Ledger brand after loading', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getAllByText(/heritage ledger/i).length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getAllByText(/stokvel management platform/i).length).toBeGreaterThan(0))
   })
 
   it('shows greeting with user name after loading', async () => {

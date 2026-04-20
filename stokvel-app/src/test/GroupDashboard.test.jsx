@@ -90,7 +90,7 @@ describe('GroupDashboard', () => {
 
   it('renders Heritage Ledger brand after loading', async () => {
     renderPage()
-    await waitFor(() => expect(screen.getByText(/heritage ledger/i)).toBeInTheDocument(), { timeout: 3000 })
+    await waitFor(() => expect(screen.getByText(/stokvel management platform/i)).toBeInTheDocument(), { timeout: 3000 })
   })
 
   it('renders back to dashboard navigation', async () => {

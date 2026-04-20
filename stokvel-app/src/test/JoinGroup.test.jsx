@@ -119,7 +119,7 @@ describe('JoinGroup', () => {
 
   it('renders Heritage Ledger brand', () => {
     renderPage()
-    expect(screen.getByText(/heritage ledger/i)).toBeInTheDocument()
+    expect(screen.getByText(/stokvel management platform/i)).toBeInTheDocument()
   })
 
   it('renders create a group link', () => {
