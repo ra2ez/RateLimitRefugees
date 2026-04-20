@@ -114,7 +114,7 @@ export default function SignUp() {
                   stroke="#002c13" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
-            <span style={s.brandName}>Heritage Ledger</span>
+            <span style={s.brandName}>Stokvel Management Platform</span>
           </div>
 
           {/* Headline */}

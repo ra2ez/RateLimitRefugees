@@ -133,7 +133,7 @@ export default function JoinGroup() {
               <path d="M3 21h18M3 10h18M5 10V21M9 10V21M15 10V21M19 10V21M12 3L2 9h20L12 3z" stroke="#002c13" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span style={s.brandName}>Heritage Ledger</span>
+          <span style={s.brandName}>Stokvel Management Platform</span>
         </div>
         <Link to="/dashboard" style={{ fontSize: '13px', color: '#717970', textDecoration: 'none' }}>← Dashboard</Link>
       </nav>

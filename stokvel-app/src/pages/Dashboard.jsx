@@ -11,7 +11,7 @@ const s = {
   brandName:{ fontSize: '15px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.3px' },
   navRight: { display: 'flex', alignItems: 'center', gap: '14px' },
   navEmail: { fontSize: '13px', color: '#717970' },
-  signOut:  { padding: '7px 16px', background: 'transparent', border: '1.5px solid rgba(192,201,190,0.6)', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#404941', cursor: 'pointer' },
+  signOut: { padding: '7px 16px', background: '#002c13', borderRadius: '8px', fontSize: '13px', fontWeight: '600',color: '#fff', cursor: 'pointer' },
 
   page:    { maxWidth: '1060px', margin: '0 auto', padding: '40px 40px' },
 
@@ -97,7 +97,7 @@ export default function Dashboard() {
                 stroke="#002c13" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span style={s.brandName}>Heritage Ledger</span>
+          <span style={s.brandName}>Stokvel Management Platform</span>
         </div>
         <div style={s.navRight}>
           <span style={s.navEmail}>{user?.email}</span>
