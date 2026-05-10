@@ -2,18 +2,12 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
-// ── SA RATES CONFIG ─────────────────────────────────────────────────────────
-// Source: South African Reserve Bank (SARB) — resbank.co.za
-// Last updated: January 2025 | Next MPC meeting: March 2025
-// To swap in a live API, replace this object with an async fetch call
-// e.g. const rates = await fetch('https://your-api.com/sa-rates').then(r => r.json())
 const SA_RATES = {
   repoRate:  7.50,
   primeRate: 11.00,
   source:    'South African Reserve Bank (SARB)',
   asOf:      'January 2025',
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 function projectSavings(principal, annualRate, months) {
   if (!principal || principal <= 0) return 0
@@ -36,12 +30,15 @@ const s = {
   subline: { fontSize: '14px', color: '#5a6360', margin: 0 },
   rolePill:(r) => ({ display: 'inline-flex', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'capitalize', ...(r === 'admin' ? { background: 'rgba(254,212,136,0.2)', color: '#775a19' } : r === 'treasurer' ? { background: 'rgba(59,130,246,0.12)', color: '#1d4ed8' } : { background: 'rgba(0,44,19,0.08)', color: '#014421' }) }),
 
+  // tabs
   tabBar:  { display: 'flex', gap: '4px', borderBottom: '1px solid rgba(192,201,190,0.35)', marginBottom: '28px' },
   tab:     (active) => ({ padding: '10px 18px', background: 'none', border: 'none', borderBottom: active ? '2px solid #002c13' : '2px solid transparent', color: active ? '#002c13' : '#717970', fontWeight: active ? '700' : '500', cursor: 'pointer', fontSize: '14px', textTransform: 'capitalize', fontFamily: 'inherit', marginBottom: '-1px' }),
 
+  // alerts
   alertErr:  { background: '#ffdad6', borderRadius: '10px', padding: '12px 16px', color: '#93000a', fontSize: '13px', marginBottom: '20px' },
   alertOk:   { background: '#d8f3dc', borderRadius: '10px', padding: '12px 16px', color: '#014421', fontSize: '13px', marginBottom: '20px' },
 
+  // invite code banner
   codeBanner: { background: 'linear-gradient(135deg,#002c13,#014421)', borderRadius: '14px', padding: '20px 28px', marginBottom: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' },
   codeBannerLeft: { display: 'flex', flexDirection: 'column', gap: '4px' },
   codeBannerLabel: { fontSize: '11px', fontWeight: '700', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.1em' },
@@ -49,6 +46,7 @@ const s = {
   codeBannerHint: { fontSize: '12px', color: 'rgba(255,255,255,0.4)' },
   copyBtn: { padding: '8px 18px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' },
 
+  // stat cards
   grid:    { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: '16px', marginBottom: '20px' },
   card:    { background: '#fff', borderRadius: '14px', padding: '22px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)' },
   clabel:  { fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' },
@@ -65,7 +63,6 @@ const s = {
   rateBoxLabel: (accent) => ({ fontSize: '10px', fontWeight: '700', color: accent ? 'rgba(255,255,255,0.5)' : '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.1em' }),
   rateBoxValue: (accent) => ({ fontSize: '22px', fontWeight: '800', color: accent ? '#fed488' : '#191c1d', letterSpacing: '-0.4px' }),
   rateBoxSub: (accent) => ({ fontSize: '11px', color: accent ? 'rgba(255,255,255,0.35)' : '#9ca39a' }),
-
   projGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '12px' },
   projItem: { background: '#f8f9fa', borderRadius: '10px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '4px' },
   projLabel: { fontSize: '10px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em' },
@@ -76,6 +73,7 @@ const s = {
   sectionRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' },
   sectionTitle: { fontSize: '15px', fontWeight: '700', color: '#191c1d', margin: 0 },
 
+  // tables
   tableWrap: { background: '#fff', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '28px' },
   tableHead: (cols) => ({ display: 'grid', gridTemplateColumns: cols, padding: '12px 20px', borderBottom: '1px solid rgba(192,201,190,0.3)', background: '#fafbfa' }),
   tableHCell:{ fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.08em' },
@@ -84,6 +82,7 @@ const s = {
   tCellSub:  { fontSize: '13px', color: '#717970' },
   emptyRow:  { padding: '32px 20px', textAlign: 'center', fontSize: '13px', color: '#9ca39a' },
 
+  // status pills
   statusPill: (st) => {
     if (st === 'confirmed' || st === 'paid' || st === 'completed') return { display: 'inline-flex', fontSize: '12px', fontWeight: '600', color: '#15803d', background: 'rgba(22,163,74,0.1)', padding: '2px 8px', borderRadius: '20px' }
     if (st === 'pending') return { display: 'inline-flex', fontSize: '12px', fontWeight: '600', color: '#92400e', background: 'rgba(245,158,11,0.1)', padding: '2px 8px', borderRadius: '20px' }
@@ -91,10 +90,12 @@ const s = {
     return { display: 'inline-flex', fontSize: '12px', fontWeight: '600', color: '#717970', background: 'rgba(192,201,190,0.2)', padding: '2px 8px', borderRadius: '20px' }
   },
 
+  // action buttons
   btnPrimary: { padding: '8px 18px', background: '#002c13', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
   btnSuccess: { padding: '5px 12px', background: '#014421', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
   btnDanger:  { padding: '5px 12px', background: '#ffdad6', color: '#93000a', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
 
+  // settings form
   settingsCard: { background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 1px 4px rgba(25,28,29,0.07)', border: '1px solid rgba(192,201,190,0.25)', maxWidth: '560px' },
   fieldRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' },
   field:  { display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '16px' },
@@ -103,6 +104,7 @@ const s = {
   textarea: { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', resize: 'vertical', minHeight: '80px', width: '100%', boxSizing: 'border-box' },
   select: { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', width: '100%' },
 
+  // meetings
   meetingCard: { background: '#fff', borderRadius: '14px', padding: '22px 24px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '12px' },
 
   loading: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif', color: '#5a6360', fontSize: '15px' },
@@ -140,7 +142,7 @@ export default function GroupDashboard() {
   const [payoutForm, setPayoutForm] = useState({ receiver_id: '', amount: '', payout_date: '' })
   const [savingPayout, setSavingPayout] = useState(false)
   const [showContribForm, setShowContribForm] = useState(false)
-  const [contribForm, setContribForm] = useState({ amount: '', payment_method: '', payment_date: '' })
+  const [contribForm, setContribForm] = useState({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
   const [savingContrib, setSavingContrib] = useState(false)
 
   useEffect(() => { loadAll() }, [id])
@@ -280,12 +282,14 @@ export default function GroupDashboard() {
       amount: parseFloat(contribForm.amount),
       payment_method: contribForm.payment_method || null,
       payment_date: contribForm.payment_date || new Date().toISOString(),
-      status: 'pending'
+      status: 'pending',
+      notes: contribForm.notes || null,
+      reference: contribForm.reference || null
     }).select('id, user_id, amount, status, payment_date, payment_method, profiles(full_name)').single()
     if (error) { notify('error', error.message); setSavingContrib(false); return }
     setContributions([data, ...contributions])
     setShowContribForm(false)
-    setContribForm({ amount: '', payment_method: '', payment_date: '' })
+    setContribForm({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
     notify('ok', 'Contribution logged! Awaiting confirmation from treasurer.')
     setSavingContrib(false)
   }
@@ -322,7 +326,6 @@ export default function GroupDashboard() {
   const myContribs = contributions.filter(c => c.user_id === currentUser?.id)
   const tabs       = TABS[myRole] ?? TABS.member
 
-  // Group-specific projections
   const proj6m  = projectSavings(totalPool, SA_RATES.primeRate, 6)
   const proj12m = projectSavings(totalPool, SA_RATES.primeRate, 12)
   const proj24m = projectSavings(totalPool, SA_RATES.primeRate, 24)
@@ -381,7 +384,6 @@ export default function GroupDashboard() {
         {/* ── OVERVIEW ── */}
         {activeTab === 'overview' && (
           <>
-            {/* Stat cards */}
             <div style={s.grid}>
               <div style={s.card}>
                 <p style={s.clabel}>Total Pool</p>
@@ -421,8 +423,6 @@ export default function GroupDashboard() {
                 <p style={s.ratesCardTitle}>📈 SA Interest Rates & Group Savings Projection</p>
                 <span style={s.ratesCardSub}>Source: {SA_RATES.source} · {SA_RATES.asOf}</span>
               </div>
-
-              {/* Rates row */}
               <div style={s.ratesRow}>
                 <div style={s.rateBox(true)}>
                   <span style={s.rateBoxLabel(true)}>Repo Rate</span>
@@ -440,8 +440,6 @@ export default function GroupDashboard() {
                   <span style={s.rateBoxSub(false)}>This group</span>
                 </div>
               </div>
-
-              {/* Projections */}
               {totalPool > 0 ? (
                 <>
                   <p style={{ fontSize: '11px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Projected Growth for {group.name}</p>
@@ -519,47 +517,96 @@ export default function GroupDashboard() {
         {activeTab === 'contributions' && (
           <>
             <div style={s.sectionRow}>
-              <p style={s.sectionTitle}>{myRole === 'member' ? 'My Contributions' : `All Contributions (${contributions.length})`}</p>
-              <button style={s.btnPrimary} onClick={() => setShowContribForm(!showContribForm)}>
+              <p style={s.sectionTitle}>
+                {myRole === 'member' ? 'My Contributions' : `All Contributions (${contributions.length})`}
+              </p>
+              <button style={s.btnPrimary} onClick={() => {
+                if (!showContribForm) setContribForm({ amount: group.contribution_amount, payment_method: '', payment_date: '', reference: '', notes: '' })
+                setShowContribForm(!showContribForm)
+              }}>
                 {showContribForm ? 'Cancel' : '+ Log Contribution'}
               </button>
             </div>
+
             {showContribForm && (
-              <div style={{ ...s.settingsCard, marginBottom: '24px', maxWidth: '100%' }}>
-                <p style={{ fontWeight: '700', color: '#191c1d', margin: '0 0 16px' }}>Log a Contribution</p>
-                <form onSubmit={handleLogContribution} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={s.fieldRow}>
+              <div style={{ marginBottom: '24px', background: '#fff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(25,28,29,0.07)', border: '1px solid rgba(192,201,190,0.25)' }}>
+                {/* Payment header */}
+                <div style={{ background: 'linear-gradient(135deg,#002c13,#014421)', padding: '24px 28px' }}>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 6px' }}>Payment Due</p>
+                  <p style={{ color: '#fed488', fontSize: '32px', fontWeight: '800', fontFamily: 'monospace', margin: '0 0 4px' }}>R {group.contribution_amount}</p>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0 }}>{group.name} — {group.payout_cycle} contribution</p>
+                </div>
+                {/* Payment form */}
+                <div style={{ padding: '28px' }}>
+                  <form onSubmit={handleLogContribution} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={s.field}>
                       <label style={s.label}>Amount (R) *</label>
-                      <input required type="number" min="1" style={s.input} value={contribForm.amount}
+                      <input required type="number" min="1" style={s.input}
+                        value={contribForm.amount}
                         onChange={e => setContribForm({ ...contribForm, amount: e.target.value })}
-                        placeholder={`e.g. ${group.contribution_amount}`} />
+                        placeholder={`${group.contribution_amount}`} />
+                      <span style={{ fontSize: '11px', color: '#9ca39a' }}>Pre-filled with your group contribution amount</span>
                     </div>
                     <div style={s.field}>
-                      <label style={s.label}>Payment Method</label>
-                      <select style={s.select} value={contribForm.payment_method} onChange={e => setContribForm({ ...contribForm, payment_method: e.target.value })}>
-                        <option value="">Select method</option>
-                        <option value="EFT">EFT</option>
-                        <option value="Cash">Cash</option>
-                        <option value="PayFast">PayFast</option>
-                        <option value="SnapScan">SnapScan</option>
-                        <option value="Other">Other</option>
-                      </select>
+                      <label style={s.label}>Payment Method *</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                        {['EFT', 'Cash', 'SnapScan', 'Other'].map(method => (
+                          <button key={method} type="button"
+                            onClick={() => setContribForm({ ...contribForm, payment_method: method })}
+                            style={{
+                              padding: '12px 8px',
+                              border: contribForm.payment_method === method ? '2px solid #002c13' : '1.5px solid rgba(192,201,190,0.45)',
+                              borderRadius: '8px',
+                              background: contribForm.payment_method === method ? 'rgba(0,44,19,0.06)' : '#fafbfa',
+                              color: contribForm.payment_method === method ? '#002c13' : '#404941',
+                              fontWeight: contribForm.payment_method === method ? '700' : '500',
+                              fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s'
+                            }}>
+                            {method === 'EFT' && '🏦 '}{method === 'Cash' && '💵 '}{method === 'SnapScan' && '📱 '}{method === 'Other' && '💳 '}
+                            {method}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div style={s.field}>
-                    <label style={s.label}>Payment Date</label>
-                    <input type="date" style={s.input} value={contribForm.payment_date}
-                      onChange={e => setContribForm({ ...contribForm, payment_date: e.target.value })} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="submit" disabled={savingContrib} style={{ ...s.btnPrimary, opacity: savingContrib ? 0.6 : 1 }}>
-                      {savingContrib ? 'Logging…' : 'Log Contribution'}
-                    </button>
-                  </div>
-                </form>
+                    <div style={s.fieldRow}>
+                      <div style={s.field}>
+                        <label style={s.label}>Payment Reference</label>
+                        <input type="text" style={s.input} value={contribForm.reference}
+                          onChange={e => setContribForm({ ...contribForm, reference: e.target.value })}
+                          placeholder="e.g. Bank reference number" />
+                      </div>
+                      <div style={s.field}>
+                        <label style={s.label}>Payment Date</label>
+                        <input type="date" style={s.input} value={contribForm.payment_date}
+                          onChange={e => setContribForm({ ...contribForm, payment_date: e.target.value })} />
+                      </div>
+                    </div>
+                    <div style={s.field}>
+                      <label style={s.label}>Notes (optional)</label>
+                      <input type="text" style={s.input} value={contribForm.notes}
+                        onChange={e => setContribForm({ ...contribForm, notes: e.target.value })}
+                        placeholder="Any additional info for the treasurer" />
+                    </div>
+                    <div style={{ background: 'rgba(254,212,136,0.15)', border: '1px solid rgba(254,212,136,0.4)', borderRadius: '8px', padding: '12px 16px' }}>
+                      <p style={{ fontSize: '12px', color: '#775a19', margin: 0, lineHeight: 1.6 }}>
+                        ⚠️ Your contribution will be marked as <strong>pending</strong> until the treasurer confirms receipt of your payment. Please ensure you have made the actual payment before submitting.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button type="button" onClick={() => setShowContribForm(false)}
+                        style={{ padding: '11px 22px', background: 'transparent', border: '1.5px solid rgba(192,201,190,0.5)', borderRadius: '8px', fontSize: '14px', fontWeight: '600', color: '#404941', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={savingContrib || !contribForm.payment_method}
+                        style={{ ...s.btnPrimary, padding: '11px 28px', fontSize: '14px', opacity: (savingContrib || !contribForm.payment_method) ? 0.6 : 1 }}>
+                        {savingContrib ? 'Submitting…' : 'Submit Payment'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
+
             <div style={s.tableWrap}>
               <div style={s.tableHead(CONTRIB_COLS)}>
                 {myRole !== 'member' && <span style={s.tableHCell}>Member</span>}
@@ -754,7 +801,7 @@ export default function GroupDashboard() {
         {/* ── SETTINGS ── */}
         {activeTab === 'settings' && myRole === 'admin' && (
           <>
-            <p style={{ fontSize: '13px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '20px' }}>Group Settings</p>
+            <p style={{ ...s.sectionTitle, marginBottom: '20px' }}>Group Settings</p>
             <div style={s.settingsCard}>
               <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
                 <div style={s.field}><label style={s.label}>Group Name</label><input name="name" defaultValue={group.name} style={s.input} /></div>
