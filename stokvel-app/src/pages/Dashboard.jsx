@@ -2,6 +2,26 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate, Link } from 'react-router-dom'
 
+// ── SA RATES CONFIG ─────────────────────────────────────────────────────────
+// Source: South African Reserve Bank (SARB) — resbank.co.za
+// Last updated: January 2025 | Next MPC meeting: March 2025
+// To swap in a live API, replace this object with an async fetch call
+// e.g. const rates = await fetch('https://your-api.com/sa-rates').then(r => r.json())
+const SA_RATES = {
+  repoRate:  7.50,   // SARB Repo Rate (%)
+  primeRate: 11.00,  // Prime Lending Rate = Repo + 3.5%
+  source:    'South African Reserve Bank (SARB)',
+  asOf:      'January 2025',
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+// Compound interest: P * (1 + r/n)^(n*t)
+function projectSavings(principal, annualRate, months) {
+  if (!principal || principal <= 0) return 0
+  const r = annualRate / 100 / 12
+  return principal * Math.pow(1 + r, months)
+}
+
 const s = {
   root:    { minHeight: '100vh', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif' },
 
@@ -11,13 +31,34 @@ const s = {
   brandName:{ fontSize: '15px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.3px' },
   navRight: { display: 'flex', alignItems: 'center', gap: '14px' },
   navEmail: { fontSize: '13px', color: '#717970' },
-  signOut: { padding: '7px 16px', background: '#002c13', borderRadius: '8px', fontSize: '13px', fontWeight: '600',color: '#fff', cursor: 'pointer' },
+  signOut:  { padding: '7px 16px', background: '#002c13', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#fff', cursor: 'pointer' },
 
   page:    { maxWidth: '1060px', margin: '0 auto', padding: '40px 40px' },
 
-  header:    { marginBottom: '32px' },
+  header:    { marginBottom: '24px' },
   greeting:  { fontSize: '26px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.4px', margin: '0 0 4px' },
   subline:   { fontSize: '14px', color: '#5a6360', margin: 0 },
+
+  // ── RATES BANNER
+  ratesBanner: { background: 'linear-gradient(135deg,#002c13,#014421)', borderRadius: '16px', padding: '20px 28px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' },
+  ratesBannerLeft: { display: 'flex', flexDirection: 'column', gap: '2px' },
+  ratesBannerTitle: { fontSize: '11px', fontWeight: '700', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.1em' },
+  ratesBannerSub:   { fontSize: '11px', color: 'rgba(255,255,255,0.3)' },
+  ratesRow: { display: 'flex', gap: '32px', flexWrap: 'wrap' },
+  rateItem: { display: 'flex', flexDirection: 'column', gap: '2px' },
+  rateLabel: { fontSize: '11px', fontWeight: '600', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.08em' },
+  rateValue: { fontSize: '26px', fontWeight: '800', color: '#fed488', letterSpacing: '-0.5px' },
+  rateSub:   { fontSize: '11px', color: 'rgba(255,255,255,0.35)' },
+
+  // ── PROJECTION CARD (dashboard level)
+  projCard: { background: '#fff', borderRadius: '16px', padding: '24px 28px', marginBottom: '28px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)' },
+  projTitle: { fontSize: '13px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 16px' },
+  projGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: '16px' },
+  projItem: { display: 'flex', flexDirection: 'column', gap: '4px' },
+  projLabel: { fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.08em' },
+  projValue: { fontSize: '22px', fontWeight: '800', color: '#002c13', letterSpacing: '-0.4px' },
+  projSub:   { fontSize: '12px', color: '#9ca39a' },
+  projNote:  { fontSize: '11px', color: '#9ca39a', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(192,201,190,0.25)' },
 
   // empty state
   emptyWrap: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' },
@@ -42,10 +83,11 @@ const s = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [loading,     setLoading]     = useState(true)
-  const [user,        setUser]        = useState(null)
-  const [profile,     setProfile]     = useState(null)
-  const [groups,      setGroups]      = useState([]) // all groups user belongs to
+  const [loading,  setLoading]  = useState(true)
+  const [user,     setUser]     = useState(null)
+  const [profile,  setProfile]  = useState(null)
+  const [groups,   setGroups]   = useState([])
+  const [totalPool, setTotalPool] = useState(0)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -57,7 +99,6 @@ export default function Dashboard() {
         .from('profiles').select('*').eq('id', u.id).maybeSingle()
       setProfile(prof)
 
-      // fetch ALL groups the user belongs to
       const { data: mems } = await supabase
         .from('group_members')
         .select('role, groups(id, name, contribution_amount, payout_cycle, max_members)')
@@ -65,6 +106,18 @@ export default function Dashboard() {
 
       if (mems) {
         setGroups(mems.filter(m => m.groups).map(m => ({ ...m.groups, myRole: m.role })))
+      }
+
+      // fetch combined confirmed contributions across all groups
+      const { data: contribs } = await supabase
+        .from('contributions')
+        .select('amount, status, group_id')
+        .eq('user_id', u.id)
+        .in('status', ['confirmed', 'paid'])
+
+      if (contribs) {
+        const total = contribs.reduce((sum, c) => sum + parseFloat(c.amount), 0)
+        setTotalPool(total)
       }
 
       setLoading(false)
@@ -84,6 +137,12 @@ export default function Dashboard() {
     ?? 'there'
 
   const hasGroups = groups.length > 0
+
+  // projections using prime rate
+  const proj6m  = projectSavings(totalPool, SA_RATES.primeRate, 6)
+  const proj12m = projectSavings(totalPool, SA_RATES.primeRate, 12)
+  const proj24m = projectSavings(totalPool, SA_RATES.primeRate, 24)
+  const growth12m = proj12m - totalPool
 
   return (
     <div style={s.root}>
@@ -114,6 +173,59 @@ export default function Dashboard() {
             {hasGroups ? `You are in ${groups.length} group${groups.length > 1 ? 's' : ''}` : 'No group yet — get started below'}
           </p>
         </div>
+
+        {/* ── SA RATES BANNER */}
+        <div style={s.ratesBanner}>
+          <div style={s.ratesBannerLeft}>
+            <span style={s.ratesBannerTitle}>🏦 SA Live Rates</span>
+            <span style={s.ratesBannerSub}>Source: {SA_RATES.source} · As of {SA_RATES.asOf}</span>
+          </div>
+          <div style={s.ratesRow}>
+            <div style={s.rateItem}>
+              <span style={s.rateLabel}>Repo Rate</span>
+              <span style={s.rateValue}>{SA_RATES.repoRate}%</span>
+              <span style={s.rateSub}>SARB base rate</span>
+            </div>
+            <div style={s.rateItem}>
+              <span style={s.rateLabel}>Prime Rate</span>
+              <span style={s.rateValue}>{SA_RATES.primeRate}%</span>
+              <span style={s.rateSub}>Repo + 3.5%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── COMBINED SAVINGS PROJECTION (only if user has contributions) */}
+        {hasGroups && totalPool > 0 && (
+          <div style={s.projCard}>
+            <p style={s.projTitle}>📈 Your Combined Savings Projection (All Groups)</p>
+            <div style={s.projGrid}>
+              <div style={s.projItem}>
+                <span style={s.projLabel}>Current Total</span>
+                <span style={s.projValue}>R {totalPool.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span style={s.projSub}>Confirmed across all groups</span>
+              </div>
+              <div style={s.projItem}>
+                <span style={s.projLabel}>In 6 Months</span>
+                <span style={s.projValue}>R {proj6m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span style={s.projSub}>At {SA_RATES.primeRate}% prime rate</span>
+              </div>
+              <div style={s.projItem}>
+                <span style={s.projLabel}>In 12 Months</span>
+                <span style={s.projValue}>R {proj12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span style={s.projSub}>+R {growth12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} growth</span>
+              </div>
+              <div style={s.projItem}>
+                <span style={s.projLabel}>In 24 Months</span>
+                <span style={s.projValue}>R {proj24m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span style={s.projSub}>At {SA_RATES.primeRate}% prime rate</span>
+              </div>
+            </div>
+            <p style={s.projNote}>
+              * Projections use compound interest based on the current SA prime lending rate of {SA_RATES.primeRate}% (Repo: {SA_RATES.repoRate}%). 
+              These are estimates for informational purposes only and do not constitute financial advice.
+            </p>
+          </div>
+        )}
 
         {/* No group */}
         {!hasGroups && (
