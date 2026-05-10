@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard'
 import CreateGroup from './pages/CreateGroup'
 import JoinGroup from './pages/JoinGroup'
 import GroupDashboard from './pages/GroupDashboard'
+import Analytics from './pages/Analytics'
 
 function App() {
   const [session, setSession] = useState(undefined) // undefined = still checking
@@ -44,6 +45,7 @@ function App() {
         <Route path="/join-group"   element={session ? <JoinGroup />    : <Navigate to="/login" replace />} />
         <Route path="/group/:id" element={session ? <GroupDashboard /> : <Navigate to="/login" replace />} />
         <Route path="*" element={<ErrorPage />} />
+        <Route path="/group/:id/analytics" element={session ? <Analytics /> : <Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   )

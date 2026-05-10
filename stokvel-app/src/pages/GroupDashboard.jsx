@@ -143,11 +143,14 @@ export default function GroupDashboard() {
   useEffect(() => { loadAll() }, [id])
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`)
-      .then(r => r.json())
-      .then(data => setRates(data))
-      .catch(() => {})
-  }, [])
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`, { signal: controller.signal })
+    .then(r => r.json())
+    .then(data => setRates(data))
+    .catch(() => {})
+    .finally(() => clearTimeout(timeout))
+}, [])
 
   async function loadAll() {
     setLoading(true)
@@ -328,17 +331,11 @@ export default function GroupDashboard() {
   const myContribs = contributions.filter(c => c.user_id === currentUser?.id)
   const tabs       = TABS[myRole] ?? TABS.member
 
-<<<<<<< HEAD
-  const proj6m  = projectSavings(totalPool, SA_RATES.primeRate, 6)
-  const proj12m = projectSavings(totalPool, SA_RATES.primeRate, 12)
-  const proj24m = projectSavings(totalPool, SA_RATES.primeRate, 24)
-=======
   const primeRate = rates.prime
   const repoRate  = rates.repo
   const proj6m  = primeRate ? projectSavings(totalPool, primeRate, 6)  : null
   const proj12m = primeRate ? projectSavings(totalPool, primeRate, 12) : null
   const proj24m = primeRate ? projectSavings(totalPool, primeRate, 24) : null
->>>>>>> 8208f77 (feat: live SARB rates on dashboard and group dashboard)
 
   const MEMBER_COLS  = myRole === 'admin' ? '1fr 120px 140px 120px' : '1fr 120px 140px'
   const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 120px' : '100px 110px 120px 100px'
@@ -357,7 +354,12 @@ export default function GroupDashboard() {
           </div>
           <span style={s.brandName}>Stokvel Management Platform</span>
         </div>
-        <Link to="/dashboard" style={{ fontSize: '13px', color: '#717970', textDecoration: 'none' }}>← Dashboard</Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Link to="/dashboard" style={{ fontSize: '13px', color: '#717970', textDecoration: 'none' }}>← Dashboard</Link>
+          <button onClick={() => navigate(`/group/${id}/analytics`)} style={s.btnPrimary}>
+             Analytics
+          </button>
+        </div>
       </nav>
 
       <div style={s.page}>

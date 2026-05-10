@@ -71,61 +71,71 @@ const s = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [loading,  setLoading]  = useState(true)
+  const [loading,  setLoading]  = useState(false)
   const [user,     setUser]     = useState(null)
   const [profile,  setProfile]  = useState(null)
   const [groups,   setGroups]   = useState([])
   const [totalPool, setTotalPool] = useState(0)
   const [rates, setRates] = useState({ repo: null, prime: null })
 
-  useEffect(() => {
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`)
-      .then(r => r.json())
-      .then(data => setRates(data))
-      .catch(() => {})
-  }, [])
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    if (!session) { navigate('/login'); return }
+    const u = session.user
+    setUser(u)
 
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) { navigate('/login'); return }
-      const u = data.session.user
-      setUser(u)
+    const [profRes, memsRes, contribsRes] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', u.id).maybeSingle(),
+      supabase.from('group_members').select('role, groups(id, name, contribution_amount, payout_cycle, max_members)').eq('user_id', u.id),
+      supabase.from('contributions').select('amount, status').eq('user_id', u.id).in('status', ['confirmed', 'paid'])
+    ])
 
-      const { data: prof } = await supabase
-        .from('profiles').select('*').eq('id', u.id).maybeSingle()
-      setProfile(prof)
+    setProfile(profRes.data)
+    if (memsRes.data) {
+      setGroups(memsRes.data.filter(m => m.groups).map(m => ({ ...m.groups, myRole: m.role })))
+    }
+    if (contribsRes.data) {
+      setTotalPool(contribsRes.data.reduce((sum, c) => sum + parseFloat(c.amount), 0))
+    }
+  })
 
-      const { data: mems } = await supabase
-        .from('group_members')
-        .select('role, groups(id, name, contribution_amount, payout_cycle, max_members)')
-        .eq('user_id', u.id)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`, { signal: controller.signal })
+    .then(r => r.json())
+    .then(data => setRates(data))
+    .catch(() => {})
+    .finally(() => clearTimeout(timeout))
 
-      if (mems) {
-        setGroups(mems.filter(m => m.groups).map(m => ({ ...m.groups, myRole: m.role })))
-      }
-
-      // fetch combined confirmed contributions across all groups
-      const { data: contribs } = await supabase
-        .from('contributions')
-        .select('amount, status, group_id')
-        .eq('user_id', u.id)
-        .in('status', ['confirmed', 'paid'])
-
-      if (contribs) {
-        const total = contribs.reduce((sum, c) => sum + parseFloat(c.amount), 0)
-        setTotalPool(total)
-      }
-
-      setLoading(false)
-    })
-  }, [navigate])
+  return () => subscription.unsubscribe()
+}, [navigate])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     navigate('/login')
   }
 
-  if (loading) return <div style={s.loading}>Loading your dashboard…</div>
+  if (!user) return (
+  <div style={s.root}>
+    <nav style={s.nav}>
+      <div style={s.brand}>
+        <div style={s.brandIcon}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M3 21h18M3 10h18M5 10V21M9 10V21M15 10V21M19 10V21M12 3L2 9h20L12 3z"
+              stroke="#002c13" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <span style={s.brandName}>Stokvel Management Platform</span>
+      </div>
+    </nav>
+    <div style={s.page}>
+      <div style={{ height: '32px', width: '220px', background: 'rgba(192,201,190,0.3)', borderRadius: '8px', marginBottom: '12px' }} />
+      <div style={{ height: '16px', width: '160px', background: 'rgba(192,201,190,0.2)', borderRadius: '6px', marginBottom: '32px' }} />
+      <div style={{ height: '88px', background: 'rgba(192,201,190,0.2)', borderRadius: '16px', marginBottom: '20px' }} />
+      <div style={{ height: '120px', background: 'rgba(192,201,190,0.15)', borderRadius: '16px' }} />
+    </div>
+  </div>
+)
 
   const firstName = profile?.full_name?.split(' ')[0]
     ?? user?.user_metadata?.full_name?.split(' ')[0]
@@ -194,7 +204,7 @@ export default function Dashboard() {
         {/* ── COMBINED SAVINGS PROJECTION (only if user has contributions) */}
         {hasGroups && totalPool > 0 && (
           <div style={s.projCard}>
-            <p style={s.projTitle}>📈 Your Combined Savings Projection (All Groups)</p>
+            <p style={s.projTitle}> Your Combined Savings Projection (All Groups)</p>
             <div style={s.projGrid}>
               <div style={s.projItem}>
                 <span style={s.projLabel}>Current Total</span>
@@ -203,7 +213,7 @@ export default function Dashboard() {
               </div>
               <div style={s.projItem}>
                 <span style={s.projLabel}>In 6 Months</span>
-                <span style={s.projValue}>R {proj6m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span style={s.projValue}>R {proj6m ? proj6m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '…'}</span>
                 <span style={s.projSub}>{primeRate ? `At ${primeRate}% prime rate` : 'Loading rate…'}</span>
               </div>
               <div style={s.projItem}>
