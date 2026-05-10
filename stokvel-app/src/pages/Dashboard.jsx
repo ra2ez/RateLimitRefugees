@@ -2,18 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate, Link } from 'react-router-dom'
 
-// ── SA RATES CONFIG ─────────────────────────────────────────────────────────
-// Source: South African Reserve Bank (SARB) — resbank.co.za
-// Last updated: January 2025 | Next MPC meeting: March 2025
-// To swap in a live API, replace this object with an async fetch call
-// e.g. const rates = await fetch('https://your-api.com/sa-rates').then(r => r.json())
-const SA_RATES = {
-  repoRate:  7.50,   // SARB Repo Rate (%)
-  primeRate: 11.00,  // Prime Lending Rate = Repo + 3.5%
-  source:    'South African Reserve Bank (SARB)',
-  asOf:      'January 2025',
-}
-// ────────────────────────────────────────────────────────────────────────────
 
 // Compound interest: P * (1 + r/n)^(n*t)
 function projectSavings(principal, annualRate, months) {
@@ -88,6 +76,14 @@ export default function Dashboard() {
   const [profile,  setProfile]  = useState(null)
   const [groups,   setGroups]   = useState([])
   const [totalPool, setTotalPool] = useState(0)
+  const [rates, setRates] = useState({ repo: null, prime: null })
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`)
+      .then(r => r.json())
+      .then(data => setRates(data))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -138,11 +134,12 @@ export default function Dashboard() {
 
   const hasGroups = groups.length > 0
 
-  // projections using prime rate
-  const proj6m  = projectSavings(totalPool, SA_RATES.primeRate, 6)
-  const proj12m = projectSavings(totalPool, SA_RATES.primeRate, 12)
-  const proj24m = projectSavings(totalPool, SA_RATES.primeRate, 24)
-  const growth12m = proj12m - totalPool
+  const primeRate = rates.prime
+  const repoRate  = rates.repo
+  const proj6m  = primeRate ? projectSavings(totalPool, primeRate, 6)  : null
+  const proj12m = primeRate ? projectSavings(totalPool, primeRate, 12) : null
+  const proj24m = primeRate ? projectSavings(totalPool, primeRate, 24) : null
+  const growth12m = proj12m != null ? proj12m - totalPool : null
 
   return (
     <div style={s.root}>
@@ -178,17 +175,17 @@ export default function Dashboard() {
         <div style={s.ratesBanner}>
           <div style={s.ratesBannerLeft}>
             <span style={s.ratesBannerTitle}>🏦 SA Live Rates</span>
-            <span style={s.ratesBannerSub}>Source: {SA_RATES.source} · As of {SA_RATES.asOf}</span>
+            <span style={s.ratesBannerSub}>Source: South African Reserve Bank (SARB) · Live</span>
           </div>
           <div style={s.ratesRow}>
             <div style={s.rateItem}>
               <span style={s.rateLabel}>Repo Rate</span>
-              <span style={s.rateValue}>{SA_RATES.repoRate}%</span>
+              <span style={s.rateValue}>{rates.repo != null ? `${rates.repo}%` : '…'}</span>
               <span style={s.rateSub}>SARB base rate</span>
             </div>
             <div style={s.rateItem}>
               <span style={s.rateLabel}>Prime Rate</span>
-              <span style={s.rateValue}>{SA_RATES.primeRate}%</span>
+              <span style={s.rateValue}>{rates.prime != null ? `${rates.prime}%` : '…'}</span>
               <span style={s.rateSub}>Repo + 3.5%</span>
             </div>
           </div>
@@ -207,21 +204,21 @@ export default function Dashboard() {
               <div style={s.projItem}>
                 <span style={s.projLabel}>In 6 Months</span>
                 <span style={s.projValue}>R {proj6m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                <span style={s.projSub}>At {SA_RATES.primeRate}% prime rate</span>
+                <span style={s.projSub}>{primeRate ? `At ${primeRate}% prime rate` : 'Loading rate…'}</span>
               </div>
               <div style={s.projItem}>
                 <span style={s.projLabel}>In 12 Months</span>
-                <span style={s.projValue}>R {proj12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                <span style={s.projSub}>+R {growth12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} growth</span>
+                <span style={s.projValue}>{proj12m != null ? `R ${proj12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '…'}</span>
+                <span style={s.projSub}>{growth12m != null ? `+R ${growth12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} growth` : ''}</span>
               </div>
               <div style={s.projItem}>
                 <span style={s.projLabel}>In 24 Months</span>
-                <span style={s.projValue}>R {proj24m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                <span style={s.projSub}>At {SA_RATES.primeRate}% prime rate</span>
+                <span style={s.projValue}>{proj24m != null ? `R ${proj24m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '…'}</span>
+                <span style={s.projSub}>{primeRate ? `At ${primeRate}% prime rate` : ''}</span>
               </div>
             </div>
             <p style={s.projNote}>
-              * Projections use compound interest based on the current SA prime lending rate of {SA_RATES.primeRate}% (Repo: {SA_RATES.repoRate}%). 
+              * Projections use compound interest based on the current SA prime lending rate of {primeRate ?? '…'}% (Repo: {repoRate ?? '…'}%). 
               These are estimates for informational purposes only and do not constitute financial advice.
             </p>
           </div>

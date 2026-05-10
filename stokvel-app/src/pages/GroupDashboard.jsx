@@ -2,12 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
-const SA_RATES = {
-  repoRate:  7.50,
-  primeRate: 11.00,
-  source:    'South African Reserve Bank (SARB)',
-  asOf:      'January 2025',
-}
 
 function projectSavings(principal, annualRate, months) {
   if (!principal || principal <= 0) return 0
@@ -141,11 +135,19 @@ export default function GroupDashboard() {
   const [showPayoutForm, setShowPayoutForm] = useState(false)
   const [payoutForm, setPayoutForm] = useState({ receiver_id: '', amount: '', payout_date: '' })
   const [savingPayout, setSavingPayout] = useState(false)
+  const [rates, setRates] = useState({ repo: null, prime: null })
   const [showContribForm, setShowContribForm] = useState(false)
   const [contribForm, setContribForm] = useState({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
   const [savingContrib, setSavingContrib] = useState(false)
 
   useEffect(() => { loadAll() }, [id])
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`)
+      .then(r => r.json())
+      .then(data => setRates(data))
+      .catch(() => {})
+  }, [])
 
   async function loadAll() {
     setLoading(true)
@@ -326,9 +328,17 @@ export default function GroupDashboard() {
   const myContribs = contributions.filter(c => c.user_id === currentUser?.id)
   const tabs       = TABS[myRole] ?? TABS.member
 
+<<<<<<< HEAD
   const proj6m  = projectSavings(totalPool, SA_RATES.primeRate, 6)
   const proj12m = projectSavings(totalPool, SA_RATES.primeRate, 12)
   const proj24m = projectSavings(totalPool, SA_RATES.primeRate, 24)
+=======
+  const primeRate = rates.prime
+  const repoRate  = rates.repo
+  const proj6m  = primeRate ? projectSavings(totalPool, primeRate, 6)  : null
+  const proj12m = primeRate ? projectSavings(totalPool, primeRate, 12) : null
+  const proj24m = primeRate ? projectSavings(totalPool, primeRate, 24) : null
+>>>>>>> 8208f77 (feat: live SARB rates on dashboard and group dashboard)
 
   const MEMBER_COLS  = myRole === 'admin' ? '1fr 120px 140px 120px' : '1fr 120px 140px'
   const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 120px' : '100px 110px 120px 100px'
@@ -421,17 +431,17 @@ export default function GroupDashboard() {
             <div style={s.ratesCard}>
               <div style={s.ratesCardHeader}>
                 <p style={s.ratesCardTitle}>📈 SA Interest Rates & Group Savings Projection</p>
-                <span style={s.ratesCardSub}>Source: {SA_RATES.source} · {SA_RATES.asOf}</span>
+                <span style={s.ratesCardSub}>Source: South African Reserve Bank (SARB) · Live</span>
               </div>
               <div style={s.ratesRow}>
                 <div style={s.rateBox(true)}>
                   <span style={s.rateBoxLabel(true)}>Repo Rate</span>
-                  <span style={s.rateBoxValue(true)}>{SA_RATES.repoRate}%</span>
+                  <span style={s.rateBoxValue(true)}>{rates.repo != null ? `${rates.repo}%` : '…'}</span>
                   <span style={s.rateBoxSub(true)}>SARB base rate</span>
                 </div>
                 <div style={s.rateBox(false)}>
                   <span style={s.rateBoxLabel(false)}>Prime Rate</span>
-                  <span style={s.rateBoxValue(false)}>{SA_RATES.primeRate}%</span>
+                  <span style={s.rateBoxValue(false)}>{rates.prime != null ? `${rates.prime}%` : '…'}</span>
                   <span style={s.rateBoxSub(false)}>Repo + 3.5%</span>
                 </div>
                 <div style={s.rateBox(false)}>
@@ -446,22 +456,22 @@ export default function GroupDashboard() {
                   <div style={s.projGrid}>
                     <div style={s.projItem}>
                       <span style={s.projLabel}>In 6 Months</span>
-                      <span style={s.projValue}>R {proj6m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      <span style={s.projGrowth}>+R {(proj6m - totalPool).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span style={s.projValue}>{proj6m != null ? `R ${proj6m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '…'}</span>
+                      <span style={s.projGrowth}>{proj6m != null ? `+R ${(proj6m - totalPool).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>
                     </div>
                     <div style={s.projItem}>
                       <span style={s.projLabel}>In 12 Months</span>
-                      <span style={s.projValue}>R {proj12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      <span style={s.projGrowth}>+R {(proj12m - totalPool).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span style={s.projValue}>{proj12m != null ? `R ${proj12m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '…'}</span>
+                      <span style={s.projGrowth}>{proj12m != null ? `+R ${(proj12m - totalPool).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>
                     </div>
                     <div style={s.projItem}>
                       <span style={s.projLabel}>In 24 Months</span>
-                      <span style={s.projValue}>R {proj24m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      <span style={s.projGrowth}>+R {(proj24m - totalPool).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span style={s.projValue}>{proj24m != null ? `R ${proj24m.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '…'}</span>
+                      <span style={s.projGrowth}>{proj24m != null ? `+R ${(proj24m - totalPool).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>
                     </div>
                   </div>
                   <p style={s.projNote}>
-                    * Projections use compound interest at the current prime rate of {SA_RATES.primeRate}%. For informational purposes only — not financial advice.
+                    * Projections use compound interest at the current prime rate of {primeRate ?? '…'}%. For informational purposes only — not financial advice.
                   </p>
                 </>
               ) : (
