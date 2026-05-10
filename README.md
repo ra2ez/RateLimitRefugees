@@ -2,7 +2,7 @@
 A web-based platform for managing South African stokvel groups — contributions, payouts, meetings, and financial insights.
 
 ## Deployed App
-https://stokvelplatform.netlify.app/
+https://bit.ly/stockvel-management
 
 
 ## Group Members
