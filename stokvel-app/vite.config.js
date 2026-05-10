@@ -15,7 +15,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
-      exclude: ['node_modules/', 'src/test/'],
+      exclude: ['node_modules/', 'src/test/', 'eslint.config.js', 'vite.config.js', 'src/main.jsx', 'src/supabaseClient.js'],
     },
   },
 });
