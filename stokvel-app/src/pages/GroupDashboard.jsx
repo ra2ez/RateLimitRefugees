@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
@@ -135,10 +136,14 @@ export default function GroupDashboard() {
   const [showPayoutForm, setShowPayoutForm] = useState(false)
   const [payoutForm, setPayoutForm] = useState({ receiver_id: '', amount: '', payout_date: '' })
   const [savingPayout, setSavingPayout] = useState(false)
+  const [payoutProofFile, setPayoutProofFile] = useState(null)
+  const [uploadingPayoutProof, setUploadingPayoutProof] = useState(false)
   const [rates, setRates] = useState({ repo: null, prime: null })
   const [showContribForm, setShowContribForm] = useState(false)
   const [contribForm, setContribForm] = useState({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
   const [savingContrib, setSavingContrib] = useState(false)
+  const [proofFile, setProofFile] = useState(null)
+  const [uploadingProof, setUploadingProof] = useState(false)
 
   useEffect(() => { loadAll() }, [id])
 
@@ -168,13 +173,13 @@ export default function GroupDashboard() {
     const { data: mems } = await supabase.from('group_members').select('role, user_id, joined_at, profiles(full_name, email)').eq('group_id', id)
     setMembers(mems ?? [])
 
-    const { data: contribs } = await supabase.from('contributions').select('id, user_id, amount, status, payment_date, payment_method, profiles(full_name)').eq('group_id', id).order('created_at', { ascending: false })
+    const { data: contribs } = await supabase.from('contributions').select('id, user_id, amount, status, payment_date, payment_method, proof_of_payment, profiles(full_name)').eq('group_id', id).order('created_at', { ascending: false })
     setContributions(contribs ?? [])
 
     const { data: meets } = await supabase.from('meetings').select('*').eq('group_id', id).order('meeting_date', { ascending: true })
     setMeetings(meets ?? [])
 
-    const { data: pays } = await supabase.from('payouts').select('id, amount, status, payout_date, created_at, receiver:profiles!payouts_receiver_id_fkey(full_name)').eq('group_id', id).order('created_at', { ascending: false })
+    const { data: pays } = await supabase.from('payouts').select('id, amount, status, payout_date, created_at, receiver_id, initiated_by, proof_of_payment, receiver:profiles!payouts_receiver_id_fkey(full_name)').eq('group_id', id).order('created_at', { ascending: false })
     setPayouts(pays ?? [])
 
     setLoading(false)
@@ -218,6 +223,13 @@ export default function GroupDashboard() {
     if (error) { notify('error', error.message); return }
     setContributions(contributions.map(c => c.id === contributionId ? { ...c, status: 'pending' } : c))
     notify('ok', 'Contribution unflagged, status set back to pending.')
+  }
+  const handleViewProof = async (proofPath) => {
+    const { data, error } = await supabase.storage
+      .from('payment-proofs')
+      .createSignedUrl(proofPath, 60)
+    if (error) { notify('error', 'Could not load proof: ' + error.message); return }
+    window.open(data.signedUrl, '_blank')
   }
 
   const handleSaveMeeting = async (e) => {
@@ -279,25 +291,75 @@ export default function GroupDashboard() {
     notify('ok', 'Payout status updated.')
   }
 
-  const handleLogContribution = async (e) => {
-    e.preventDefault()
-    setSavingContrib(true)
-    const { data, error } = await supabase.from('contributions').insert({
-      group_id: id, user_id: currentUser.id,
-      amount: parseFloat(contribForm.amount),
-      payment_method: contribForm.payment_method || null,
-      payment_date: contribForm.payment_date || new Date().toISOString(),
-      status: 'pending',
-      notes: contribForm.notes || null,
-      reference: contribForm.reference || null
-    }).select('id, user_id, amount, status, payment_date, payment_method, profiles(full_name)').single()
-    if (error) { notify('error', error.message); setSavingContrib(false); return }
-    setContributions([data, ...contributions])
-    setShowContribForm(false)
-    setContribForm({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
-    notify('ok', 'Contribution logged! Awaiting confirmation from treasurer.')
-    setSavingContrib(false)
+  const handleViewPayoutProof = async (proofPath) => {
+    const { data, error } = await supabase.storage
+      .from('payout-proofs')
+      .createSignedUrl(proofPath, 60)
+    if (error) { notify('error', 'Could not load proof: ' + error.message); return }
+    window.open(data.signedUrl, '_blank')
   }
+
+  const handleUploadPayoutProof = async (payoutId, file) => {
+    if (!file) return
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+    if (!allowed.includes(file.type)) { notify('error', 'Only images or PDF allowed'); return }
+    if (file.size > 5 * 1024 * 1024) { notify('error', 'File must be under 5MB'); return }
+
+    setUploadingPayoutProof(true)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${currentUser.id}_${payoutId}_${Date.now()}.${fileExt}`
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('payout-proofs')
+      .upload(fileName, file)
+
+    if (uploadError) { notify('error', 'Upload failed: ' + uploadError.message); setUploadingPayoutProof(false); return }
+
+    const { error } = await supabase.from('payouts')
+      .update({ proof_of_payment: uploadData.path })
+      .eq('id', payoutId)
+
+    if (error) { notify('error', error.message); setUploadingPayoutProof(false); return }
+
+    setPayouts(payouts.map(p => p.id === payoutId ? { ...p, proof_of_payment: uploadData.path } : p))
+    notify('ok', 'Proof of payout uploaded.')
+    setUploadingPayoutProof(false)
+  }
+
+  const handleLogContribution = async (e) => {
+  e.preventDefault()
+  if (!proofFile) { notify('error', 'Please attach proof of payment.'); return }
+  setSavingContrib(true)
+  setUploadingProof(true)
+
+  // Upload proof of payment to Supabase Storage
+  const fileExt = proofFile.name.split('.').pop()
+  const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('payment-proofs')
+    .upload(fileName, proofFile)
+  
+  if (uploadError) { notify('error', 'Failed to upload proof: ' + uploadError.message); setSavingContrib(false); setUploadingProof(false); return }
+  setUploadingProof(false)
+
+  const { data, error } = await supabase.from('contributions').insert({
+    group_id: id, user_id: currentUser.id,
+    amount: parseFloat(contribForm.amount),
+    payment_method: contribForm.payment_method || null,
+    payment_date: contribForm.payment_date || new Date().toISOString(),
+    status: 'pending',
+    notes: contribForm.notes || null,
+    reference: contribForm.reference || null,
+    proof_of_payment: uploadData.path
+  }).select('id, user_id, amount, status, payment_date, payment_method, profiles(full_name)').single()
+
+  if (error) { notify('error', error.message); setSavingContrib(false); return }
+  setContributions([data, ...contributions])
+  setShowContribForm(false)
+  setContribForm({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
+  setProofFile(null)
+  notify('ok', 'Contribution logged! Awaiting confirmation from treasurer.')
+  setSavingContrib(false)
+}
 
   const handleSaveSettings = async (e) => {
     e.preventDefault()
@@ -338,7 +400,7 @@ export default function GroupDashboard() {
   const proj24m = primeRate ? projectSavings(totalPool, primeRate, 24) : null
 
   const MEMBER_COLS  = myRole === 'admin' ? '1fr 120px 140px 120px' : '1fr 120px 140px'
-  const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 120px' : '100px 110px 120px 100px'
+  const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 60px 120px' : '100px 110px 120px 100px 60px'
   const PAYOUT_COLS  = myRole === 'member' ? '1fr 120px 120px 110px' : '1fr 120px 120px 110px 140px'
 
   return (
@@ -533,7 +595,10 @@ export default function GroupDashboard() {
                 {myRole === 'member' ? 'My Contributions' : `All Contributions (${contributions.length})`}
               </p>
               <button style={s.btnPrimary} onClick={() => {
-                if (!showContribForm) setContribForm({ amount: group.contribution_amount, payment_method: '', payment_date: '', reference: '', notes: '' })
+                if (!showContribForm) {
+                  setContribForm({ amount: group.contribution_amount, payment_method: '', payment_date: '', reference: '', notes: '' })
+                  setProofFile(null)
+                }
                 setShowContribForm(!showContribForm)
               }}>
                 {showContribForm ? 'Cancel' : '+ Log Contribution'}
@@ -599,19 +664,60 @@ export default function GroupDashboard() {
                         onChange={e => setContribForm({ ...contribForm, notes: e.target.value })}
                         placeholder="Any additional info for the treasurer" />
                     </div>
+                    {/* Proof of Payment */}
+                    <div style={s.field}>
+                      <label style={s.label}>Proof of Payment *</label>
+                      <div style={{
+                        border: proofFile ? '1.5px solid #002c13' : '1.5px dashed rgba(192,201,190,0.6)',
+                        borderRadius: '8px', padding: '16px', background: proofFile ? 'rgba(0,44,19,0.03)' : '#fafbfa',
+                        cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s'
+                      }}
+                        onClick={() => document.getElementById('proof-upload').click()}
+                      >
+                        {proofFile ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '20px' }}>✅</span>
+                            <div style={{ textAlign: 'left' }}>
+                              <p style={{ fontSize: '13px', fontWeight: '700', color: '#002c13', margin: 0 }}>{proofFile.name}</p>
+                              <p style={{ fontSize: '11px', color: '#9ca39a', margin: 0 }}>{(proofFile.size / 1024).toFixed(1)} KB · Click to change</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <p style={{ fontSize: '13px', fontWeight: '600', color: '#404941', margin: '0 0 4px' }}>📎 Attach proof of payment</p>
+                            <p style={{ fontSize: '11px', color: '#9ca39a', margin: 0 }}>Screenshot, PDF or photo · Max 5MB</p>
+                          </div>
+                        )}
+                        <input
+                          id="proof-upload"
+                          type="file"
+                          accept="image/*,.pdf"
+                          style={{ display: 'none' }}
+                          onChange={e => {
+                            const file = e.target.files[0]
+                            if (!file) return
+                            const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']
+                            if (!allowed.includes(file.type)) { notify('error', 'Only images (JPG, PNG, WEBP) or PDF allowed'); return }
+                            if (file.size > 5 * 1024 * 1024) { notify('error', 'File must be under 5MB'); return }
+                            setProofFile(file)
+                          }}
+                        />
+                      </div>
+                      {!proofFile && <span style={{ fontSize: '11px', color: '#93000a' }}>Required — upload your bank screenshot or receipt</span>}
+                    </div>
                     <div style={{ background: 'rgba(254,212,136,0.15)', border: '1px solid rgba(254,212,136,0.4)', borderRadius: '8px', padding: '12px 16px' }}>
                       <p style={{ fontSize: '12px', color: '#775a19', margin: 0, lineHeight: 1.6 }}>
                         ⚠️ Your contribution will be marked as <strong>pending</strong> until the treasurer confirms receipt of your payment. Please ensure you have made the actual payment before submitting.
                       </p>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                      <button type="button" onClick={() => setShowContribForm(false)}
+                      <button type="button" onClick={() => { setShowContribForm(false); setProofFile(null) }}
                         style={{ padding: '11px 22px', background: 'transparent', border: '1.5px solid rgba(192,201,190,0.5)', borderRadius: '8px', fontSize: '14px', fontWeight: '600', color: '#404941', cursor: 'pointer', fontFamily: 'inherit' }}>
                         Cancel
                       </button>
                       <button type="submit" disabled={savingContrib || !contribForm.payment_method}
                         style={{ ...s.btnPrimary, padding: '11px 28px', fontSize: '14px', opacity: (savingContrib || !contribForm.payment_method) ? 0.6 : 1 }}>
-                        {savingContrib ? 'Submitting…' : 'Submit Payment'}
+                        {uploadingProof ? 'Uploading proof…' : savingContrib ? 'Submitting…' : 'Submit Payment'}
                       </button>
                     </div>
                   </form>
@@ -626,6 +732,7 @@ export default function GroupDashboard() {
                 <span style={s.tableHCell}>Status</span>
                 <span style={s.tableHCell}>Date</span>
                 <span style={s.tableHCell}>Method</span>
+                <span style={s.tableHCell}>Proof</span>
                 {(myRole === 'admin' || myRole === 'treasurer') && <span style={s.tableHCell}>Actions</span>}
               </div>
               {contributions.length === 0 && <div style={s.emptyRow}>No contributions recorded yet.</div>}
@@ -636,14 +743,23 @@ export default function GroupDashboard() {
                   <span style={s.statusPill(c.status)}>{c.status}</span>
                   <span style={s.tCellSub}>{c.payment_date ? new Date(c.payment_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) : '—'}</span>
                   <span style={s.tCellSub}>{c.payment_method ?? '—'}</span>
+                  <span style={{ fontSize: '16px' }} title={c.proof_of_payment ? 'Proof attached' : 'No proof'}>
+                    {c.proof_of_payment ? '📎' : '—'}
+                  </span>
                   {(myRole === 'admin' || myRole === 'treasurer') && (
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {c.proof_of_payment && (
+                        <button style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.1)', color: '#1d4ed8', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
+                          onClick={() => handleViewProof(c.proof_of_payment)}>
+                          📎 Proof
+                        </button>
+                      )}
                       {c.status === 'pending' && <>
                         <button style={s.btnSuccess} onClick={() => handleConfirm(c.id)}>Confirm</button>
                         <button style={s.btnDanger}  onClick={() => handleFlag(c.id)}>Flag</button>
                       </>}
                       {c.status === 'missed' && <button style={s.btnSuccess} onClick={() => handleUnflag(c.id)}>Unflag</button>}
-                      {c.status === 'confirmed' && <span style={s.tCellSub}>—</span>}
+                      {c.status === 'confirmed' && !c.proof_of_payment && <span style={s.tCellSub}>—</span>}
                     </div>
                   )}
                 </div>
@@ -790,22 +906,40 @@ export default function GroupDashboard() {
                 {(myRole === 'admin' || myRole === 'treasurer') && <span style={s.tableHCell}>Actions</span>}
               </div>
               {payouts.length === 0 && <div style={s.emptyRow}>No payouts yet.</div>}
-              {payouts.map((p, i) => (
-                <div key={p.id} style={s.tableRow(PAYOUT_COLS, i === payouts.length - 1)}>
-                  <span style={s.tCell}>{p.receiver?.full_name ?? 'Unknown'}</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#002c13' }}>R {parseFloat(p.amount).toLocaleString()}</span>
-                  <span style={s.tCellSub}>{p.payout_date ? new Date(p.payout_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</span>
-                  <span style={s.statusPill(p.status)}>{p.status}</span>
-                  {(myRole === 'admin' || myRole === 'treasurer') && (
-                    <select value={p.status} onChange={e => handleUpdatePayoutStatus(p.id, e.target.value)}
-                      style={{ padding: '5px 8px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}>
-                      <option value="pending">Pending</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  )}
-                </div>
-              ))}
+              {payouts.map((p, i) => {
+                const canSeeProof = currentUser && (p.receiver_id === currentUser.id || p.initiated_by === currentUser.id)
+                return (
+                  <div key={p.id} style={s.tableRow(PAYOUT_COLS, i === payouts.length - 1)}>
+                    <span style={s.tCell}>{p.receiver?.full_name ?? 'Unknown'}</span>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#002c13' }}>R {parseFloat(p.amount).toLocaleString()}</span>
+                    <span style={s.tCellSub}>{p.payout_date ? new Date(p.payout_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</span>
+                    <span style={s.statusPill(p.status)}>{p.status}</span>
+                    {(myRole === 'admin' || myRole === 'treasurer') && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select value={p.status} onChange={e => handleUpdatePayoutStatus(p.id, e.target.value)}
+                          style={{ padding: '5px 8px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}>
+                          <option value="pending">Pending</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                        {p.status === 'completed' && canSeeProof && !p.proof_of_payment && (
+                          <label style={{ padding: '5px 10px', background: 'rgba(0,44,19,0.08)', color: '#002c13', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: uploadingPayoutProof ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                            {uploadingPayoutProof ? 'Uploading…' : '📎 Add Proof'}
+                            <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+                              onChange={e => handleUploadPayoutProof(p.id, e.target.files[0])} />
+                          </label>
+                        )}
+                        {p.proof_of_payment && canSeeProof && (
+                          <button style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.1)', color: '#1d4ed8', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
+                            onClick={() => handleViewPayoutProof(p.proof_of_payment)}>
+                            📎 View Proof
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </>
         )}
