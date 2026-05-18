@@ -29,12 +29,15 @@ const SESSION = {
 }
 
 const makeChain = () => ({
-  select: vi.fn().mockReturnThis(),
-  eq: vi.fn().mockReturnThis(),
-  in: vi.fn().mockReturnThis(),
+  select:      vi.fn().mockReturnThis(),
+  eq:          vi.fn().mockReturnThis(),
+  in:          vi.fn().mockReturnThis(),
+  order:       vi.fn().mockReturnThis(),
+  limit:       vi.fn().mockReturnThis(),
+  neq:         vi.fn().mockReturnThis(),
   maybeSingle: vi.fn().mockResolvedValue({ data: null }),
   then: (res, rej) => Promise.resolve({ data: [], error: null }).then(res, rej),
-  catch: (fn) => Promise.resolve({ data: [], error: null }).catch(fn),
+  catch: (fn)       => Promise.resolve({ data: [], error: null }).catch(fn),
 })
 
 import Dashboard from '../pages/Dashboard'
