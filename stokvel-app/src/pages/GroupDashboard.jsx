@@ -1,6 +1,8 @@
-import { useEffect, useState, useRef } from 'react'
+
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+
 
 function projectSavings(principal, annualRate, months) {
   if (!principal || principal <= 0) return 0
@@ -8,216 +10,74 @@ function projectSavings(principal, annualRate, months) {
   return principal * Math.pow(1 + r, months)
 }
 
-// ── BUILD GROUP NOTIFICATIONS ─────────────────────────────────────────────────
-// Uses members list to build a name map — reliable even if profiles join is null
-function buildGroupNotifications(contributions, meetings, payouts, members, currentUserId, myRole, group) {
-  const notifs = []
-  const now    = new Date()
-
-  // Build userId -> name map from members (more reliable than profiles join on contributions)
-  const nameMap = {}
-  members.forEach(m => {
-    if (m.profiles?.full_name) nameMap[m.user_id] = m.profiles.full_name
-  })
-  const getName = (c) => c.profiles?.full_name ?? nameMap[c.user_id] ?? 'A member'
-
-  // ── Pending contributions
-  const allPending    = contributions.filter(c => c.status === 'pending')
-  const myPending     = allPending.filter(c => c.user_id === currentUserId)
-  const othersPending = allPending.filter(c => c.user_id !== currentUserId)
-
-  // Everyone sees other members' pending contributions with name
-  othersPending.forEach(c => {
-    notifs.push({
-      id:    `contrib-notif-${c.id}`,
-      type:  'contribution',
-      icon:  '💰',
-      title: `${getName(c)} logged a contribution`,
-      body:  `R ${parseFloat(c.amount).toLocaleString()} — awaiting ${myRole !== 'member' ? 'your' : 'treasurer'} confirmation.`,
-      color: '#d97706',
-      bg:    'rgba(217,119,6,0.08)',
-    })
-  })
-
-  // My own pending contributions
-  if (myPending.length > 0) {
-    notifs.push({
-      id:    `my-pending-${myPending.map(c => c.id).join('-')}`,
-      type:  'contribution',
-      icon:  '✅',
-      title: 'Your contribution is pending',
-      body:  `R ${myPending.reduce((s, c) => s + parseFloat(c.amount), 0).toLocaleString()} is awaiting treasurer confirmation.`,
-      color: '#15803d',
-      bg:    'rgba(22,163,74,0.08)',
-    })
-  }
-
-  // ── Missed contributions
-  const missedContribs = myRole !== 'member'
-    ? contributions.filter(c => c.status === 'missed')
-    : contributions.filter(c => c.status === 'missed' && c.user_id === currentUserId)
-
-  if (missedContribs.length > 0) {
-    notifs.push({
-      id:    `missed-${missedContribs.map(c => c.id).join('-')}`,
-      type:  'contribution',
-      icon:  '⚠️',
-      title: `${missedContribs.length} missed contribution${missedContribs.length > 1 ? 's' : ''}`,
-      body:  myRole !== 'member' ? 'Some members have missed contributions.' : 'You have missed contributions. Please contact your treasurer.',
-      color: '#dc2626',
-      bg:    'rgba(220,38,38,0.08)',
-    })
-  }
-
-  // ── Upcoming meetings in next 7 days
-  meetings
-    .filter(m => { const diff = (new Date(m.meeting_date) - now) / (1000 * 60 * 60 * 24); return diff >= 0 && diff <= 7 })
-    .forEach(m => {
-      const d = new Date(m.meeting_date)
-      notifs.push({
-        id:    `meeting-${m.id}`,
-        type:  'meeting',
-        icon:  '📅',
-        title: `Upcoming: ${m.title}`,
-        body:  `${d.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' })} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${m.location ? ` · ${m.location}` : ''}`,
-        color: '#1d4ed8',
-        bg:    'rgba(59,130,246,0.08)',
-      })
-    })
-
-  // ── Pending payouts
-  const pendingPayouts = payouts.filter(p => p.status === 'pending')
-  if (pendingPayouts.length > 0) {
-    notifs.push({
-      id:    `pending-payouts-${pendingPayouts.map(p => p.id).join('-')}`,
-      type:  'payout',
-      icon:  '💸',
-      title: `${pendingPayouts.length} payout${pendingPayouts.length > 1 ? 's' : ''} pending`,
-      body:  `R ${pendingPayouts.reduce((s, p) => s + parseFloat(p.amount), 0).toLocaleString()} to be paid out.`,
-      color: '#014421',
-      bg:    'rgba(1,68,33,0.08)',
-    })
-  }
-
-  // ── Payouts received by current user in last 7 days
-  payouts
-    .filter(p => p.receiver_id === currentUserId && p.status === 'completed' && (now - new Date(p.created_at)) / (1000 * 60 * 60 * 24) <= 7)
-    .forEach(p => {
-      notifs.push({
-        id:    `my-payout-${p.id}`,
-        type:  'payout',
-        icon:  '🎉',
-        title: 'You received a payout!',
-        body:  `R ${parseFloat(p.amount).toLocaleString()} was paid to you from ${group?.name ?? 'your group'}.`,
-        color: '#15803d',
-        bg:    'rgba(22,163,74,0.08)',
-      })
-    })
-
-  // ── New members in last 7 days
-  members
-    .filter(m => m.user_id !== currentUserId && m.joined_at && (now - new Date(m.joined_at)) / (1000 * 60 * 60 * 24) <= 7)
-    .forEach(m => {
-      notifs.push({
-        id:    `member-${m.user_id}`,
-        type:  'member',
-        icon:  '🤝',
-        title: 'New member joined',
-        body:  `${m.profiles?.full_name ?? 'Someone'} joined ${group?.name ?? 'the group'}.`,
-        color: '#775a19',
-        bg:    'rgba(254,212,136,0.15)',
-      })
-    })
-
-  return notifs
-}
-// ──────────────────────────────────────────────────────────────────────────────
-
 const s = {
-  root:        { minHeight: '100vh', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif' },
+  root:    { minHeight: '100vh', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif' },
+  nav:     { background: '#fff', borderBottom: '1px solid rgba(192,201,190,0.35)', padding: '0 40px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20 },
+  brand:   { display: 'flex', alignItems: 'center', gap: '10px' },
+  brandIcon:{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg,#c49a2a,#fed488)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  brandName:{ fontSize: '15px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.3px' },
 
-  // Nav
-  nav:         { background: '#fff', borderBottom: '1px solid rgba(192,201,190,0.35)', padding: '0 40px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20 },
-  brand:       { display: 'flex', alignItems: 'center', gap: '10px' },
-  brandIcon:   { width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg,#c49a2a,#fed488)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  brandName:   { fontSize: '15px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.3px' },
-  navRight:    { display: 'flex', alignItems: 'center', gap: '12px' },
+  page:    { maxWidth: '1060px', margin: '0 auto', padding: '40px 40px' },
+  back:    { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#717970', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 20px', fontFamily: 'inherit' },
 
-  // Bell
-  bellBtn:     { position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' },
-  bellBadge:   { position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', borderRadius: '50%', background: '#dc2626', color: '#fff', fontSize: '9px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' },
+  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' },
+  h1:      { fontSize: '26px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.4px', margin: '0 0 6px' },
+  subline: { fontSize: '14px', color: '#5a6360', margin: 0 },
+  rolePill:(r) => ({ display: 'inline-flex', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'capitalize', ...(r === 'admin' ? { background: 'rgba(254,212,136,0.2)', color: '#775a19' } : r === 'treasurer' ? { background: 'rgba(59,130,246,0.12)', color: '#1d4ed8' } : { background: 'rgba(0,44,19,0.08)', color: '#014421' }) }),
 
-  // Notification sidebar
-  overlay:     { position: 'fixed', inset: 0, background: 'rgba(25,28,29,0.3)', zIndex: 40, backdropFilter: 'blur(2px)' },
-  sidebar:     { position: 'fixed', top: 0, right: 0, width: '380px', height: '100vh', background: '#fff', boxShadow: '-8px 0 32px rgba(25,28,29,0.12)', zIndex: 50, display: 'flex', flexDirection: 'column' },
-  sidebarHead: { padding: '20px 24px 16px', borderBottom: '1px solid rgba(192,201,190,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
-  sidebarTitle:{ fontSize: '16px', fontWeight: '800', color: '#191c1d', margin: 0 },
-  sidebarClose:{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#717970', padding: '2px', lineHeight: 1 },
-  sidebarBody: { overflowY: 'auto', flex: 1, padding: '12px 16px' },
-  notifItem:   { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', borderRadius: '10px', marginBottom: '8px' },
-  notifIcon:   { width: '36px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 },
-  notifTitle:  { fontSize: '13px', fontWeight: '700', margin: '0 0 2px' },
-  notifBody:   { fontSize: '12px', color: '#717970', margin: 0, lineHeight: 1.5 },
-  emptyNotif:  { textAlign: 'center', padding: '48px 24px', color: '#9ca39a', fontSize: '13px' },
+  // tabs
+  tabBar:  { display: 'flex', gap: '4px', borderBottom: '1px solid rgba(192,201,190,0.35)', marginBottom: '28px' },
+  tab:     (active) => ({ padding: '10px 18px', background: 'none', border: 'none', borderBottom: active ? '2px solid #002c13' : '2px solid transparent', color: active ? '#002c13' : '#717970', fontWeight: active ? '700' : '500', cursor: 'pointer', fontSize: '14px', textTransform: 'capitalize', fontFamily: 'inherit', marginBottom: '-1px' }),
 
-  // Page
-  page:        { maxWidth: '1060px', margin: '0 auto', padding: '40px 40px' },
-  back:        { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#717970', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 20px', fontFamily: 'inherit' },
-  headerRow:   { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' },
-  h1:          { fontSize: '26px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.4px', margin: '0 0 6px' },
-  subline:     { fontSize: '14px', color: '#5a6360', margin: 0 },
-  rolePill:    (r) => ({ display: 'inline-flex', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'capitalize', ...(r === 'admin' ? { background: 'rgba(254,212,136,0.2)', color: '#775a19' } : r === 'treasurer' ? { background: 'rgba(59,130,246,0.12)', color: '#1d4ed8' } : { background: 'rgba(0,44,19,0.08)', color: '#014421' }) }),
-  alertErr:    { background: '#ffdad6', borderRadius: '10px', padding: '12px 16px', color: '#93000a', fontSize: '13px', marginBottom: '20px' },
-  alertOk:     { background: '#d8f3dc', borderRadius: '10px', padding: '12px 16px', color: '#014421', fontSize: '13px', marginBottom: '20px' },
+  // alerts
+  alertErr:  { background: '#ffdad6', borderRadius: '10px', padding: '12px 16px', color: '#93000a', fontSize: '13px', marginBottom: '20px' },
+  alertOk:   { background: '#d8f3dc', borderRadius: '10px', padding: '12px 16px', color: '#014421', fontSize: '13px', marginBottom: '20px' },
 
-  // Tabs
-  tabBar:      { display: 'flex', gap: '4px', borderBottom: '1px solid rgba(192,201,190,0.35)', marginBottom: '28px' },
-  tab:         (active) => ({ padding: '10px 18px', background: 'none', border: 'none', borderBottom: active ? '2px solid #002c13' : '2px solid transparent', color: active ? '#002c13' : '#717970', fontWeight: active ? '700' : '500', cursor: 'pointer', fontSize: '14px', textTransform: 'capitalize', fontFamily: 'inherit', marginBottom: '-1px' }),
-
-  // Invite code banner
-  codeBanner:      { background: 'linear-gradient(135deg,#002c13,#014421)', borderRadius: '14px', padding: '20px 28px', marginBottom: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' },
-  codeBannerLeft:  { display: 'flex', flexDirection: 'column', gap: '4px' },
+  // invite code banner
+  codeBanner: { background: 'linear-gradient(135deg,#002c13,#014421)', borderRadius: '14px', padding: '20px 28px', marginBottom: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' },
+  codeBannerLeft: { display: 'flex', flexDirection: 'column', gap: '4px' },
   codeBannerLabel: { fontSize: '11px', fontWeight: '700', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.1em' },
-  codeBannerCode:  { fontSize: '22px', fontWeight: '800', color: '#fed488', letterSpacing: '0.2em', fontFamily: 'monospace' },
-  codeBannerHint:  { fontSize: '12px', color: 'rgba(255,255,255,0.4)' },
-  copyBtn:         { padding: '8px 18px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' },
+  codeBannerCode: { fontSize: '22px', fontWeight: '800', color: '#fed488', letterSpacing: '0.2em', fontFamily: 'monospace' },
+  codeBannerHint: { fontSize: '12px', color: 'rgba(255,255,255,0.4)' },
+  copyBtn: { padding: '8px 18px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' },
 
-  // Stat cards
-  grid:        { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: '16px', marginBottom: '20px' },
-  card:        { background: '#fff', borderRadius: '14px', padding: '22px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)' },
-  clabel:      { fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' },
-  cvalue:      { fontSize: '24px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.5px', margin: '0 0 4px' },
-  csub:        { fontSize: '12px', color: '#9ca39a', margin: 0 },
+  // stat cards
+  grid:    { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: '16px', marginBottom: '20px' },
+  card:    { background: '#fff', borderRadius: '14px', padding: '22px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)' },
+  clabel:  { fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' },
+  cvalue:  { fontSize: '24px', fontWeight: '800', color: '#191c1d', letterSpacing: '-0.5px', margin: '0 0 4px' },
+  csub:    { fontSize: '12px', color: '#9ca39a', margin: 0 },
 
-  // Rates + projection card
-  ratesCard:       { background: '#fff', borderRadius: '14px', padding: '22px 24px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '28px' },
+  // ── RATES + PROJECTION CARD
+  ratesCard: { background: '#fff', borderRadius: '14px', padding: '22px 24px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '28px' },
   ratesCardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' },
-  ratesCardTitle:  { fontSize: '13px', fontWeight: '700', color: '#191c1d', margin: 0 },
-  ratesCardSub:    { fontSize: '11px', color: '#9ca39a' },
-  ratesRow:        { display: 'flex', gap: '0px', marginBottom: '16px', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(192,201,190,0.25)' },
-  rateBox:         (accent) => ({ flex: 1, padding: '14px 18px', background: accent ? '#002c13' : '#fafbfa', display: 'flex', flexDirection: 'column', gap: '2px' }),
-  rateBoxLabel:    (accent) => ({ fontSize: '10px', fontWeight: '700', color: accent ? 'rgba(255,255,255,0.5)' : '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.1em' }),
-  rateBoxValue:    (accent) => ({ fontSize: '22px', fontWeight: '800', color: accent ? '#fed488' : '#191c1d', letterSpacing: '-0.4px' }),
-  rateBoxSub:      (accent) => ({ fontSize: '11px', color: accent ? 'rgba(255,255,255,0.35)' : '#9ca39a' }),
-  projGrid:        { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '12px' },
-  projItem:        { background: '#f8f9fa', borderRadius: '10px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '4px' },
-  projLabel:       { fontSize: '10px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em' },
-  projValue:       { fontSize: '18px', fontWeight: '800', color: '#002c13', letterSpacing: '-0.3px' },
-  projGrowth:      { fontSize: '11px', color: '#15803d', fontWeight: '600' },
-  projNote:        { fontSize: '11px', color: '#9ca39a', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(192,201,190,0.2)' },
+  ratesCardTitle: { fontSize: '13px', fontWeight: '700', color: '#191c1d', margin: 0 },
+  ratesCardSub: { fontSize: '11px', color: '#9ca39a' },
+  ratesRow: { display: 'flex', gap: '0px', marginBottom: '16px', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(192,201,190,0.25)' },
+  rateBox: (accent) => ({ flex: 1, padding: '14px 18px', background: accent ? '#002c13' : '#fafbfa', display: 'flex', flexDirection: 'column', gap: '2px' }),
+  rateBoxLabel: (accent) => ({ fontSize: '10px', fontWeight: '700', color: accent ? 'rgba(255,255,255,0.5)' : '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.1em' }),
+  rateBoxValue: (accent) => ({ fontSize: '22px', fontWeight: '800', color: accent ? '#fed488' : '#191c1d', letterSpacing: '-0.4px' }),
+  rateBoxSub: (accent) => ({ fontSize: '11px', color: accent ? 'rgba(255,255,255,0.35)' : '#9ca39a' }),
+  projGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '12px' },
+  projItem: { background: '#f8f9fa', borderRadius: '10px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '4px' },
+  projLabel: { fontSize: '10px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em' },
+  projValue: { fontSize: '18px', fontWeight: '800', color: '#002c13', letterSpacing: '-0.3px' },
+  projGrowth: { fontSize: '11px', color: '#15803d', fontWeight: '600' },
+  projNote: { fontSize: '11px', color: '#9ca39a', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(192,201,190,0.2)' },
 
-  // Section / table
-  sectionRow:  { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' },
-  sectionTitle:{ fontSize: '15px', fontWeight: '700', color: '#191c1d', margin: 0 },
-  tableWrap:   { background: '#fff', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '28px' },
-  tableHead:   (cols) => ({ display: 'grid', gridTemplateColumns: cols, padding: '12px 20px', borderBottom: '1px solid rgba(192,201,190,0.3)', background: '#fafbfa' }),
-  tableHCell:  { fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.08em' },
-  tableRow:    (cols, last) => ({ display: 'grid', gridTemplateColumns: cols, padding: '13px 20px', borderBottom: last ? 'none' : '1px solid rgba(192,201,190,0.15)', alignItems: 'center' }),
-  tCell:       { fontSize: '13px', color: '#191c1d' },
-  tCellSub:    { fontSize: '13px', color: '#717970' },
-  emptyRow:    { padding: '32px 20px', textAlign: 'center', fontSize: '13px', color: '#9ca39a' },
+  sectionRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' },
+  sectionTitle: { fontSize: '15px', fontWeight: '700', color: '#191c1d', margin: 0 },
 
-  // Status pills
+  // tables
+  tableWrap: { background: '#fff', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '28px' },
+  tableHead: (cols) => ({ display: 'grid', gridTemplateColumns: cols, padding: '12px 20px', borderBottom: '1px solid rgba(192,201,190,0.3)', background: '#fafbfa' }),
+  tableHCell:{ fontSize: '11px', fontWeight: '600', color: '#717970', textTransform: 'uppercase', letterSpacing: '0.08em' },
+  tableRow:  (cols, last) => ({ display: 'grid', gridTemplateColumns: cols, padding: '13px 20px', borderBottom: last ? 'none' : '1px solid rgba(192,201,190,0.15)', alignItems: 'center' }),
+  tCell:     { fontSize: '13px', color: '#191c1d' },
+  tCellSub:  { fontSize: '13px', color: '#717970' },
+  emptyRow:  { padding: '32px 20px', textAlign: 'center', fontSize: '13px', color: '#9ca39a' },
+
+  // status pills
   statusPill: (st) => {
     if (st === 'confirmed' || st === 'paid' || st === 'completed') return { display: 'inline-flex', fontSize: '12px', fontWeight: '600', color: '#15803d', background: 'rgba(22,163,74,0.1)', padding: '2px 8px', borderRadius: '20px' }
     if (st === 'pending') return { display: 'inline-flex', fontSize: '12px', fontWeight: '600', color: '#92400e', background: 'rgba(245,158,11,0.1)', padding: '2px 8px', borderRadius: '20px' }
@@ -225,23 +85,25 @@ const s = {
     return { display: 'inline-flex', fontSize: '12px', fontWeight: '600', color: '#717970', background: 'rgba(192,201,190,0.2)', padding: '2px 8px', borderRadius: '20px' }
   },
 
-  // Buttons
-  btnPrimary:  { padding: '8px 18px', background: '#002c13', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
-  btnSuccess:  { padding: '5px 12px', background: '#014421', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
-  btnDanger:   { padding: '5px 12px', background: '#ffdad6', color: '#93000a', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
+  // action buttons
+  btnPrimary: { padding: '8px 18px', background: '#002c13', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
+  btnSuccess: { padding: '5px 12px', background: '#014421', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
+  btnDanger:  { padding: '5px 12px', background: '#ffdad6', color: '#93000a', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' },
 
-  // Settings form
-  settingsCard:{ background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 1px 4px rgba(25,28,29,0.07)', border: '1px solid rgba(192,201,190,0.25)', maxWidth: '560px' },
-  fieldRow:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' },
-  field:       { display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '16px' },
-  label:       { fontSize: '11px', fontWeight: '600', color: '#404941', letterSpacing: '0.08em', textTransform: 'uppercase' },
-  input:       { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' },
-  textarea:    { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', resize: 'vertical', minHeight: '80px', width: '100%', boxSizing: 'border-box' },
-  select:      { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', width: '100%' },
+  // settings form
+  settingsCard: { background: '#fff', borderRadius: '16px', padding: '32px', boxShadow: '0 1px 4px rgba(25,28,29,0.07)', border: '1px solid rgba(192,201,190,0.25)', maxWidth: '560px' },
+  fieldRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' },
+  field:  { display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '16px' },
+  label:  { fontSize: '11px', fontWeight: '600', color: '#404941', letterSpacing: '0.08em', textTransform: 'uppercase' },
+  input:  { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' },
+  textarea: { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', resize: 'vertical', minHeight: '80px', width: '100%', boxSizing: 'border-box' },
+  select: { padding: '11px 13px', background: '#fafbfa', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', fontSize: '14px', color: '#191c1d', fontFamily: 'inherit', outline: 'none', width: '100%' },
+
+  // meetings
   meetingCard: { background: '#fff', borderRadius: '14px', padding: '22px 24px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)', marginBottom: '12px' },
 
-  loading:     { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif', color: '#5a6360', fontSize: '15px' },
-  notFound:    { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif' },
+  loading: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif', color: '#5a6360', fontSize: '15px' },
+  notFound:{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f0', fontFamily: 'system-ui,sans-serif' },
 }
 
 const TABS = {
@@ -250,229 +112,50 @@ const TABS = {
   member:    ['overview', 'members', 'contributions', 'meetings', 'payouts'],
 }
 
-function PoolOverTimeGraph({ contributions }) {
-  const confirmed = contributions
-    .filter(c => c.status === 'confirmed' || c.status === 'paid')
-    .sort((a, b) => new Date(a.payment_date) - new Date(b.payment_date))
-
-  if (confirmed.length === 0) return (
-    <div style={{ textAlign: 'center', padding: '40px', color: '#9ca39a', fontSize: '13px' }}>
-      No confirmed contributions yet.
-    </div>
-  )
-
-  const points = confirmed.reduce((acc, c) => {
-    const prev = acc.length > 0 ? acc[acc.length - 1].total : 0
-    acc.push({ date: new Date(c.payment_date), total: prev + parseFloat(c.amount) })
-    return acc
-  }, [])
-
-  const maxVal = points[points.length - 1].total
-  const W = 600, H = 180, PAD = 40
-  const x = (i) => PAD + (i / (points.length - 1 || 1)) * (W - PAD * 2)
-  const y = (v) => H - PAD - (v / (maxVal || 1)) * (H - PAD * 2)
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(p.total)}`).join(' ')
-  const areaD = `${pathD} L ${x(points.length - 1)} ${H - PAD} L ${x(0)} ${H - PAD} Z`
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => t * maxVal)
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
-      {yTicks.map((v, i) => (
-        <g key={i}>
-          <line x1={PAD} y1={y(v)} x2={W - PAD} y2={y(v)} stroke="rgba(192,201,190,0.3)" strokeWidth="1" />
-          <text x={PAD - 6} y={y(v) + 4} textAnchor="end" fontSize="9" fill="#9ca39a">
-            R{v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v}
-          </text>
-        </g>
-      ))}
-      {points.map((p, i) => {
-        if (points.length > 8 && i % Math.ceil(points.length / 6) !== 0) return null
-        return (
-          <text key={i} x={x(i)} y={H - PAD + 14} textAnchor="middle" fontSize="9" fill="#9ca39a">
-            {p.date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
-          </text>
-        )
-      })}
-      <path d={areaD} fill="rgba(0,44,19,0.06)" />
-      <path d={pathD} fill="none" stroke="#002c13" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      {points.map((p, i) => (
-        <circle key={i} cx={x(i)} cy={y(p.total)} r="3.5" fill="#002c13" stroke="#fff" strokeWidth="1.5" />
-      ))}
-    </svg>
-  )
-}
-
-function StatusBreakdownGraph({ contributions, myRole, currentUserId }) {
-  const data      = myRole === 'member' ? contributions.filter(c => c.user_id === currentUserId) : contributions
-  const confirmed = data.filter(c => c.status === 'confirmed' || c.status === 'paid').length
-  const pending   = data.filter(c => c.status === 'pending').length
-  const missed    = data.filter(c => c.status === 'missed').length
-  const total     = confirmed + pending + missed
-
-  if (total === 0) return (
-    <div style={{ textAlign: 'center', padding: '40px', color: '#9ca39a', fontSize: '13px' }}>
-      No contributions yet.
-    </div>
-  )
-
-  const bars   = [
-    { label: 'Confirmed', value: confirmed, color: '#16a34a' },
-    { label: 'Pending',   value: pending,   color: '#d97706' },
-    { label: 'Missed',    value: missed,    color: '#dc2626' },
-  ]
-  const maxVal = Math.max(...bars.map(b => b.value), 1)
-  const W = 600, H = 180, PAD = 40, barW = 60, gap = 40
-  const startX = (W - (bars.length * (barW + gap) - gap)) / 2
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
-      {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-        const v  = Math.round(t * maxVal)
-        const yy = PAD + (1 - t) * (H - PAD * 2)
-        return (
-          <g key={i}>
-            <line x1={PAD} y1={yy} x2={W - PAD} y2={yy} stroke="rgba(192,201,190,0.3)" strokeWidth="1" />
-            <text x={PAD - 6} y={yy + 4} textAnchor="end" fontSize="9" fill="#9ca39a">{v}</text>
-          </g>
-        )
-      })}
-      {bars.map((b, i) => {
-        const bx = startX + i * (barW + gap)
-        const bh = (b.value / maxVal) * (H - PAD * 2)
-        const by = PAD + (H - PAD * 2) - bh
-        return (
-          <g key={i}>
-            <rect x={bx} y={by} width={barW} height={bh} fill={b.color} rx="4" opacity="0.85" />
-            <text x={bx + barW / 2} y={by - 6} textAnchor="middle" fontSize="10" fontWeight="700" fill={b.color}>{b.value}</text>
-            <text x={bx + barW / 2} y={H - PAD + 14} textAnchor="middle" fontSize="10" fill="#717970">{b.label}</text>
-            <text x={bx + barW / 2} y={H - PAD + 26} textAnchor="middle" fontSize="9" fill="#9ca39a">{total > 0 ? Math.round((b.value / total) * 100) : 0}%</text>
-          </g>
-        )
-      })}
-    </svg>
-  )
-}
-
 export default function GroupDashboard() {
-  const { id }   = useParams()
+  const { id } = useParams()
   const navigate = useNavigate()
-  const sidebarRef = useRef(null)
 
-  const [loading,        setLoading]       = useState(true)
-  const [group,          setGroup]         = useState(null)
-  const [myRole,         setMyRole]        = useState(null)
-  const [currentUser,    setCurrentUser]   = useState(null)
-  const [members,        setMembers]       = useState([])
-  const [contributions,  setContributions] = useState([])
-  const [meetings,       setMeetings]      = useState([])
-  const [payouts,        setPayouts]       = useState([])
-  const [activeTab,      setActiveTab]     = useState('overview')
-  const [copied,         setCopied]        = useState(false)
-  const [error,          setError]         = useState('')
-  const [success,        setSuccess]       = useState('')
-  const [showNotifs,     setShowNotifs]    = useState(false)
-  const [realtimeNotifs, setRealtimeNotifs] = useState([])
-  const [seenIds,        setSeenIds]        = useState(() => new Set(JSON.parse(localStorage.getItem('seen_notifs') || '[]')))
-  const [rates,          setRates]         = useState({ repo: null, prime: null })
+  const [loading,       setLoading]       = useState(true)
+  const [group,         setGroup]         = useState(null)
+  const [myRole,        setMyRole]        = useState(null)
+  const [currentUser,   setCurrentUser]   = useState(null)
+  const [members,       setMembers]       = useState([])
+  const [contributions, setContributions] = useState([])
+  const [meetings,      setMeetings]      = useState([])
+  const [payouts,       setPayouts]       = useState([])
+  const [activeTab,     setActiveTab]     = useState('overview')
+  const [copied,        setCopied]        = useState(false)
+  const [error,         setError]         = useState('')
+  const [success,       setSuccess]       = useState('')
 
-  const [showMeetingForm,      setShowMeetingForm]      = useState(false)
-  const [meetingForm,          setMeetingForm]          = useState({ title: '', meeting_date: '', location: '', meeting_link: '', agenda: '' })
-  const [savingMeeting,        setSavingMeeting]        = useState(false)
-  const [editingMeeting,       setEditingMeeting]       = useState(null)
-  const [showPayoutForm,       setShowPayoutForm]       = useState(false)
-  const [payoutForm,           setPayoutForm]           = useState({ receiver_id: '', amount: '', payout_date: '' })
-  const [savingPayout,         setSavingPayout]         = useState(false)
+  const [showMeetingForm, setShowMeetingForm] = useState(false)
+  const [meetingForm, setMeetingForm] = useState({ title: '', meeting_date: '', location: '', meeting_link: '', agenda: '' })
+  const [savingMeeting, setSavingMeeting] = useState(false)
+  const [editingMeeting, setEditingMeeting] = useState(null)
+  const [showPayoutForm, setShowPayoutForm] = useState(false)
+  const [payoutForm, setPayoutForm] = useState({ receiver_id: '', amount: '', payout_date: '' })
+  const [savingPayout, setSavingPayout] = useState(false)
+  const [payoutProofFile, setPayoutProofFile] = useState(null)
   const [uploadingPayoutProof, setUploadingPayoutProof] = useState(false)
-  const [showContribForm,      setShowContribForm]      = useState(false)
-  const [contribForm,          setContribForm]          = useState({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
-  const [savingContrib,        setSavingContrib]        = useState(false)
-  const [proofFile,            setProofFile]            = useState(null)
-  const [uploadingProof,       setUploadingProof]       = useState(false)
-
-  const markAllSeen = (notifList) => {
-    const newSeen = new Set([...seenIds, ...notifList.map(n => n.id)])
-    setSeenIds(newSeen)
-    localStorage.setItem('seen_notifs', JSON.stringify([...newSeen]))
-  }
-
-  const handleNotifItemClick = (notifId) => {
-    const newSeen = new Set([...seenIds, notifId])
-    setSeenIds(newSeen)
-    localStorage.setItem('seen_notifs', JSON.stringify([...newSeen]))
-    // seenIds update triggers re-render — notification disappears immediately
-  }
+  const [rates, setRates] = useState({ repo: null, prime: null })
+  const [showContribForm, setShowContribForm] = useState(false)
+  const [contribForm, setContribForm] = useState({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
+  const [savingContrib, setSavingContrib] = useState(false)
+  const [proofFile, setProofFile] = useState(null)
+  const [uploadingProof, setUploadingProof] = useState(false)
 
   useEffect(() => { loadAll() }, [id])
 
   useEffect(() => {
-    const controller = new AbortController()
-    const timeout    = setTimeout(() => controller.abort(), 4000)
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`, { signal: controller.signal })
-      .then(r => r.json())
-      .then(data => setRates(data))
-      .catch(() => {})
-      .finally(() => clearTimeout(timeout))
-  }, [])
-
-  // ── Realtime: new contribution logged in this group
-  useEffect(() => {
-    const contribChannel = supabase
-      .channel(`group-contribs-${id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contributions', filter: `group_id=eq.${id}` }, async (payload) => {
-        // fetch contributor name
-        const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', payload.new.user_id).maybeSingle()
-        const who = prof?.full_name ?? 'A member'
-        setContributions(prev => [{ ...payload.new, profiles: { full_name: who } }, ...prev])
-        if (currentUser && payload.new.user_id !== currentUser.id) {
-          setRealtimeNotifs(prev => [{
-            id:    `rt-contrib-${payload.new.id}`,
-            type:  'contribution',
-            icon:  '💰',
-            title: 'New contribution logged',
-            body:  `${who} logged R ${parseFloat(payload.new.amount).toLocaleString()} — awaiting confirmation.`,
-            color: '#d97706',
-            bg:    'rgba(217,119,6,0.08)',
-          }, ...prev])
-        }
-      })
-      .subscribe()
-
-    // ── Realtime: payout initiated — show receiver name
-    const payoutChannel = supabase
-      .channel(`group-payouts-${id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'payouts', filter: `group_id=eq.${id}` }, async (payload) => {
-        const { data: recvr } = await supabase.from('profiles').select('full_name').eq('id', payload.new.receiver_id).maybeSingle()
-        const receiverName = recvr?.full_name ?? 'a member'
-        const isMe = currentUser && payload.new.receiver_id === currentUser.id
-        setPayouts(prev => [{ ...payload.new, receiver: { full_name: receiverName } }, ...prev])
-        setRealtimeNotifs(prev => [{
-          id:    `rt-payout-${payload.new.id}`,
-          type:  'payout',
-          icon:  isMe ? '🎉' : '💸',
-          title: isMe ? 'You have a payout!' : `Payout initiated for ${receiverName}`,
-          body:  isMe
-            ? `R ${parseFloat(payload.new.amount).toLocaleString()} is being paid out to you from ${group?.name ?? 'this group'}.`
-            : `R ${parseFloat(payload.new.amount).toLocaleString()} payout has been initiated for ${receiverName}.`,
-          color: isMe ? '#15803d' : '#014421',
-          bg:    isMe ? 'rgba(22,163,74,0.08)' : 'rgba(1,68,33,0.08)',
-        }, ...prev])
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(contribChannel)
-      supabase.removeChannel(payoutChannel)
-    }
-  }, [id, currentUser, group])
-
-  useEffect(() => {
-    if (!showNotifs) return
-    const handle = (e) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(e.target)) setShowNotifs(false)
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [showNotifs])
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-sa-rates`, { signal: controller.signal })
+    .then(r => r.json())
+    .then(data => setRates(data))
+    .catch(() => {})
+    .finally(() => clearTimeout(timeout))
+}, [])
 
   async function loadAll() {
     setLoading(true)
@@ -532,18 +215,19 @@ export default function GroupDashboard() {
     const { error } = await supabase.from('contributions').update({ status: 'missed' }).eq('id', contributionId)
     if (error) { notify('error', error.message); return }
     setContributions(contributions.map(c => c.id === contributionId ? { ...c, status: 'missed' } : c))
-    notify('ok', 'Contribution flagged.')
+    notify('ok', 'Contribution flagged as missed.')
   }
 
   const handleUnflag = async (contributionId) => {
     const { error } = await supabase.from('contributions').update({ status: 'pending' }).eq('id', contributionId)
     if (error) { notify('error', error.message); return }
     setContributions(contributions.map(c => c.id === contributionId ? { ...c, status: 'pending' } : c))
-    notify('ok', 'Contribution unflagged.')
+    notify('ok', 'Contribution unflagged, status set back to pending.')
   }
-
   const handleViewProof = async (proofPath) => {
-    const { data, error } = await supabase.storage.from('payment-proofs').createSignedUrl(proofPath, 60)
+    const { data, error } = await supabase.storage
+      .from('payment-proofs')
+      .createSignedUrl(proofPath, 60)
     if (error) { notify('error', 'Could not load proof: ' + error.message); return }
     window.open(data.signedUrl, '_blank')
   }
@@ -572,12 +256,9 @@ export default function GroupDashboard() {
     e.preventDefault()
     setSavingMeeting(true)
     const { error } = await supabase.from('meetings').update({
-      title:        editingMeeting.title,
-      meeting_date: editingMeeting.meeting_date,
-      location:     editingMeeting.location,
-      meeting_link: editingMeeting.meeting_link,
-      agenda:       editingMeeting.agenda,
-      minutes:      editingMeeting.minutes,
+      title: editingMeeting.title, meeting_date: editingMeeting.meeting_date,
+      location: editingMeeting.location, meeting_link: editingMeeting.meeting_link,
+      agenda: editingMeeting.agenda, minutes: editingMeeting.minutes,
     }).eq('id', editingMeeting.id)
     if (error) { notify('error', error.message); setSavingMeeting(false); return }
     setMeetings(meetings.map(m => m.id === editingMeeting.id ? { ...m, ...editingMeeting } : m))
@@ -590,13 +271,11 @@ export default function GroupDashboard() {
     e.preventDefault()
     setSavingPayout(true)
     const { data, error } = await supabase.from('payouts').insert({
-      group_id:    id,
-      receiver_id: payoutForm.receiver_id,
-      amount:      parseFloat(payoutForm.amount),
+      group_id: id, receiver_id: payoutForm.receiver_id,
+      amount: parseFloat(payoutForm.amount),
       payout_date: payoutForm.payout_date || new Date().toISOString(),
-      status:      'pending',
-      initiated_by: currentUser.id,
-    }).select('id, amount, status, payout_date, created_at, receiver:profiles!payouts_receiver_id_fkey(full_name)').single()
+      status: 'pending', initiated_by: currentUser.id
+    }).select(`id, amount, status, payout_date, created_at, receiver:profiles!payouts_receiver_id_fkey(full_name)`).single()
     if (error) { notify('error', error.message); setSavingPayout(false); return }
     setPayouts([data, ...payouts])
     setShowPayoutForm(false)
@@ -613,7 +292,9 @@ export default function GroupDashboard() {
   }
 
   const handleViewPayoutProof = async (proofPath) => {
-    const { data, error } = await supabase.storage.from('payout-proofs').createSignedUrl(proofPath, 60)
+    const { data, error } = await supabase.storage
+      .from('payout-proofs')
+      .createSignedUrl(proofPath, 60)
     if (error) { notify('error', 'Could not load proof: ' + error.message); return }
     window.open(data.signedUrl, '_blank')
   }
@@ -623,56 +304,71 @@ export default function GroupDashboard() {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
     if (!allowed.includes(file.type)) { notify('error', 'Only images or PDF allowed'); return }
     if (file.size > 5 * 1024 * 1024) { notify('error', 'File must be under 5MB'); return }
+
     setUploadingPayoutProof(true)
-    const fileName = `${currentUser.id}_${payoutId}_${Date.now()}.${file.name.split('.').pop()}`
-    const { data: uploadData, error: uploadError } = await supabase.storage.from('payout-proofs').upload(fileName, file)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${currentUser.id}_${payoutId}_${Date.now()}.${fileExt}`
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('payout-proofs')
+      .upload(fileName, file)
+
     if (uploadError) { notify('error', 'Upload failed: ' + uploadError.message); setUploadingPayoutProof(false); return }
-    const { error } = await supabase.from('payouts').update({ proof_of_payment: uploadData.path }).eq('id', payoutId)
+
+    const { error } = await supabase.from('payouts')
+      .update({ proof_of_payment: uploadData.path })
+      .eq('id', payoutId)
+
     if (error) { notify('error', error.message); setUploadingPayoutProof(false); return }
+
     setPayouts(payouts.map(p => p.id === payoutId ? { ...p, proof_of_payment: uploadData.path } : p))
     notify('ok', 'Proof of payout uploaded.')
     setUploadingPayoutProof(false)
   }
 
   const handleLogContribution = async (e) => {
-    e.preventDefault()
-    if (!proofFile) { notify('error', 'Please attach proof of payment.'); return }
-    setSavingContrib(true)
-    setUploadingProof(true)
-    const fileName = `${currentUser.id}_${Date.now()}.${proofFile.name.split('.').pop()}`
-    const { data: uploadData, error: uploadError } = await supabase.storage.from('payment-proofs').upload(fileName, proofFile)
-    if (uploadError) { notify('error', 'Failed to upload proof: ' + uploadError.message); setSavingContrib(false); setUploadingProof(false); return }
-    setUploadingProof(false)
-    const { data, error } = await supabase.from('contributions').insert({
-      group_id:         id,
-      user_id:          currentUser.id,
-      amount:           parseFloat(contribForm.amount),
-      payment_method:   contribForm.payment_method || null,
-      payment_date:     contribForm.payment_date   || new Date().toISOString(),
-      status:           'pending',
-      notes:            contribForm.notes     || null,
-      reference:        contribForm.reference || null,
-      proof_of_payment: uploadData.path,
-    }).select('id, user_id, amount, status, payment_date, payment_method, profiles(full_name)').single()
-    if (error) { notify('error', error.message); setSavingContrib(false); return }
-    setContributions([data, ...contributions])
-    setShowContribForm(false)
-    setContribForm({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
-    setProofFile(null)
-    notify('ok', 'Contribution logged! Awaiting confirmation from treasurer.')
-    setSavingContrib(false)
-  }
+  e.preventDefault()
+  if (!proofFile) { notify('error', 'Please attach proof of payment.'); return }
+  setSavingContrib(true)
+  setUploadingProof(true)
+
+  // Upload proof of payment to Supabase Storage
+  const fileExt = proofFile.name.split('.').pop()
+  const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('payment-proofs')
+    .upload(fileName, proofFile)
+  
+  if (uploadError) { notify('error', 'Failed to upload proof: ' + uploadError.message); setSavingContrib(false); setUploadingProof(false); return }
+  setUploadingProof(false)
+
+  const { data, error } = await supabase.from('contributions').insert({
+    group_id: id, user_id: currentUser.id,
+    amount: parseFloat(contribForm.amount),
+    payment_method: contribForm.payment_method || null,
+    payment_date: contribForm.payment_date || new Date().toISOString(),
+    status: 'pending',
+    notes: contribForm.notes || null,
+    reference: contribForm.reference || null,
+    proof_of_payment: uploadData.path
+  }).select('id, user_id, amount, status, payment_date, payment_method, profiles(full_name)').single()
+
+  if (error) { notify('error', error.message); setSavingContrib(false); return }
+  setContributions([data, ...contributions])
+  setShowContribForm(false)
+  setContribForm({ amount: '', payment_method: '', payment_date: '', reference: '', notes: '' })
+  setProofFile(null)
+  notify('ok', 'Contribution logged! Awaiting confirmation from treasurer.')
+  setSavingContrib(false)
+}
 
   const handleSaveSettings = async (e) => {
     e.preventDefault()
-    const fd      = new FormData(e.target)
+    const fd = new FormData(e.target)
     const updates = {
-      name:                fd.get('name'),
-      description:         fd.get('description'),
+      name: fd.get('name'), description: fd.get('description'),
       contribution_amount: parseFloat(fd.get('contribution_amount')),
-      payout_cycle:        fd.get('payout_cycle'),
-      meeting_frequency:   fd.get('meeting_frequency'),
-      max_members:         fd.get('max_members') ? parseInt(fd.get('max_members')) : null,
+      payout_cycle: fd.get('payout_cycle'), meeting_frequency: fd.get('meeting_frequency'),
+      max_members: fd.get('max_members') ? parseInt(fd.get('max_members')) : null,
     }
     const { error } = await supabase.from('groups').update(updates).eq('id', id)
     if (error) { notify('error', error.message); return }
@@ -681,7 +377,7 @@ export default function GroupDashboard() {
   }
 
   if (loading) return <div style={s.loading}>Loading group…</div>
-  if (!group) return (
+  if (!group)  return (
     <div style={s.notFound}>
       <div style={{ textAlign: 'center' }}>
         <p style={{ fontSize: '18px', fontWeight: '700', color: '#191c1d', marginBottom: '12px' }}>Group not found</p>
@@ -690,103 +386,44 @@ export default function GroupDashboard() {
     </div>
   )
 
-  const totalPool  = contributions.filter(c => c.status === 'confirmed' || c.status === 'paid').reduce((sum, c) => sum + parseFloat(c.amount), 0)
+  const totalPool = contributions
+    .filter(c => c.status === 'confirmed' || c.status === 'paid')
+    .reduce((sum, c) => sum + parseFloat(c.amount), 0)
   const paidCount  = contributions.filter(c => c.status === 'confirmed' || c.status === 'paid').length
   const myContribs = contributions.filter(c => c.user_id === currentUser?.id)
   const tabs       = TABS[myRole] ?? TABS.member
-  const primeRate  = rates.prime
-  const repoRate   = rates.repo
-  const proj6m     = primeRate ? projectSavings(totalPool, primeRate, 6)  : null
-  const proj12m    = primeRate ? projectSavings(totalPool, primeRate, 12) : null
-  const proj24m    = primeRate ? projectSavings(totalPool, primeRate, 24) : null
+
+  const primeRate = rates.prime
+  const repoRate  = rates.repo
+  const proj6m  = primeRate ? projectSavings(totalPool, primeRate, 6)  : null
+  const proj12m = primeRate ? projectSavings(totalPool, primeRate, 12) : null
+  const proj24m = primeRate ? projectSavings(totalPool, primeRate, 24) : null
 
   const MEMBER_COLS  = myRole === 'admin' ? '1fr 120px 140px 120px' : '1fr 120px 140px'
   const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 60px 120px' : '100px 110px 120px 100px 60px'
   const PAYOUT_COLS  = myRole === 'member' ? '1fr 120px 120px 110px' : '1fr 120px 120px 110px 140px'
 
-  const builtNotifs   = buildGroupNotifications(contributions, meetings, payouts, members, currentUser?.id, myRole, group)
-  const notifications = [...realtimeNotifs, ...builtNotifs]
-  const unreadCount   = notifications.length
-
   return (
     <div style={s.root}>
-
-      {/* ── NOTIFICATION SIDEBAR ── */}
-      {showNotifs && (
-        <>
-          <div style={s.overlay} />
-          <div style={s.sidebar} ref={sidebarRef}>
-            <div style={s.sidebarHead}>
-              <p style={s.sidebarTitle}>
-                🔔 {group.name}
-                {unreadCount > 0 && (
-                  <span style={{ fontSize: '12px', fontWeight: '600', color: '#717970', marginLeft: '6px' }}>({unreadCount})</span>
-                )}
-              </p>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {notifications.length > 0 && (
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#775a19', fontWeight: '600', fontFamily: 'inherit' }} onClick={() => markAllSeen(notifications)}>
-                    Mark all read
-                  </button>
-                )}
-                <button style={s.sidebarClose} onClick={() => setShowNotifs(false)}>✕</button>
-              </div>
-            </div>
-            <div style={s.sidebarBody}>
-              {notifications.length === 0 ? (
-                <div style={s.emptyNotif}>
-                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎉</div>
-                  <p style={{ fontWeight: '700', color: '#404941', margin: '0 0 4px' }}>All caught up!</p>
-                  <p style={{ margin: 0 }}>No new notifications for this group.</p>
-                </div>
-              ) : (
-                notifications.map(n => (
-                  <div key={n.id} style={{ ...s.notifItem, background: n.bg }} onClick={() => handleNotifItemClick(n.id)}>
-                    <div style={{ ...s.notifIcon, background: n.bg }}>{n.icon}</div>
-                    <div>
-                      <p style={{ ...s.notifTitle, color: n.color }}>{n.title}</p>
-                      <p style={s.notifBody}>{n.body}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── NAV ── */}
+      {/* Nav */}
       <nav style={s.nav}>
         <div style={s.brand}>
           <div style={s.brandIcon}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M3 21h18M3 10h18M5 10V21M9 10V21M15 10V21M19 10V21M12 3L2 9h20L12 3z" stroke="#002c13" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 21h18M3 10h18M5 10V21M9 10V21M15 10V21M19 10V21M12 3L2 9h20L12 3z"
+                stroke="#002c13" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <span style={s.brandName}>Stokvel Management Platform</span>
         </div>
-        <div style={s.navRight}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link to="/dashboard" style={{ fontSize: '13px', color: '#717970', textDecoration: 'none' }}>← Dashboard</Link>
-          <button
-            style={s.bellBtn}
-            onClick={() => setShowNotifs(v => !v)}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(192,201,190,0.2)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'none'}
-            title="Notifications"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#191c1d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            {unreadCount > 0 && (
-              <span style={s.bellBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
-            )}
+          <button onClick={() => navigate(`/group/${id}/analytics`)} style={s.btnPrimary}>
+             Analytics
           </button>
-          <button onClick={() => navigate(`/group/${id}/analytics`)} style={s.btnPrimary}>Analytics</button>
         </div>
       </nav>
 
-      {/* ── PAGE ── */}
       <div style={s.page}>
         <button style={s.back} onClick={() => navigate('/dashboard')}>← Back to dashboard</button>
 
@@ -854,7 +491,7 @@ export default function GroupDashboard() {
               </div>
             </div>
 
-            {/* Rates + projection */}
+            {/* ── SA RATES + GROUP PROJECTION CARD */}
             <div style={s.ratesCard}>
               <div style={s.ratesCardHeader}>
                 <p style={s.ratesCardTitle}>📈 SA Interest Rates & Group Savings Projection</p>
@@ -879,9 +516,7 @@ export default function GroupDashboard() {
               </div>
               {totalPool > 0 ? (
                 <>
-                  <p style={{ fontSize: '11px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>
-                    Projected Growth for {group.name}
-                  </p>
+                  <p style={{ fontSize: '11px', fontWeight: '700', color: '#9ca39a', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Projected Growth for {group.name}</p>
                   <div style={s.projGrid}>
                     <div style={s.projItem}>
                       <span style={s.projLabel}>In 6 Months</span>
@@ -908,23 +543,6 @@ export default function GroupDashboard() {
                   No confirmed contributions yet. Projections will appear once contributions are confirmed.
                 </p>
               )}
-            </div>
-
-            {/* Graphs */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' }}>
-              <div style={{ background: '#fff', borderRadius: '14px', padding: '22px 24px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)' }}>
-                <p style={{ fontSize: '13px', fontWeight: '700', color: '#191c1d', margin: '0 0 16px' }}>Total Pool Over Time</p>
-                <PoolOverTimeGraph contributions={contributions} />
-              </div>
-              <div style={{ background: '#fff', borderRadius: '14px', padding: '22px 24px', boxShadow: '0 1px 3px rgba(25,28,29,0.06)', border: '1px solid rgba(192,201,190,0.25)' }}>
-                <p style={{ fontSize: '13px', fontWeight: '700', color: '#191c1d', margin: '0 0 4px' }}>
-                  {myRole === 'member' ? 'My Contribution Status' : 'Group Contribution Status'}
-                </p>
-                <p style={{ fontSize: '11px', color: '#9ca39a', margin: '0 0 16px' }}>
-                  {myRole === 'member' ? 'Your personal breakdown' : 'All members combined'}
-                </p>
-                <StatusBreakdownGraph contributions={contributions} myRole={myRole} currentUserId={currentUser?.id} />
-              </div>
             </div>
           </>
         )}
@@ -956,11 +574,8 @@ export default function GroupDashboard() {
                   {myRole === 'admin' && (
                     m.user_id === currentUser?.id
                       ? <span style={s.tCellSub}>You</span>
-                      : <select
-                          value={m.role}
-                          onChange={e => handleRoleChange(m.user_id, e.target.value)}
-                          style={{ padding: '6px 10px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '13px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}
-                        >
+                      : <select value={m.role} onChange={e => handleRoleChange(m.user_id, e.target.value)}
+                          style={{ padding: '6px 10px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '13px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}>
                           <option value="member">Member</option>
                           <option value="treasurer">Treasurer</option>
                           <option value="admin">Admin</option>
@@ -992,27 +607,38 @@ export default function GroupDashboard() {
 
             {showContribForm && (
               <div style={{ marginBottom: '24px', background: '#fff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(25,28,29,0.07)', border: '1px solid rgba(192,201,190,0.25)' }}>
+                {/* Payment header */}
                 <div style={{ background: 'linear-gradient(135deg,#002c13,#014421)', padding: '24px 28px' }}>
                   <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 6px' }}>Payment Due</p>
                   <p style={{ color: '#fed488', fontSize: '32px', fontWeight: '800', fontFamily: 'monospace', margin: '0 0 4px' }}>R {group.contribution_amount}</p>
                   <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0 }}>{group.name} — {group.payout_cycle} contribution</p>
                 </div>
+                {/* Payment form */}
                 <div style={{ padding: '28px' }}>
                   <form onSubmit={handleLogContribution} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={s.field}>
                       <label style={s.label}>Amount (R) *</label>
-                      <input required type="number" min="1" style={s.input} value={contribForm.amount} onChange={e => setContribForm({ ...contribForm, amount: e.target.value })} placeholder={`${group.contribution_amount}`} />
+                      <input required type="number" min="1" style={s.input}
+                        value={contribForm.amount}
+                        onChange={e => setContribForm({ ...contribForm, amount: e.target.value })}
+                        placeholder={`${group.contribution_amount}`} />
                       <span style={{ fontSize: '11px', color: '#9ca39a' }}>Pre-filled with your group contribution amount</span>
                     </div>
                     <div style={s.field}>
                       <label style={s.label}>Payment Method *</label>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
                         {['EFT', 'Cash', 'SnapScan', 'Other'].map(method => (
-                          <button
-                            key={method} type="button"
+                          <button key={method} type="button"
                             onClick={() => setContribForm({ ...contribForm, payment_method: method })}
-                            style={{ padding: '12px 8px', border: contribForm.payment_method === method ? '2px solid #002c13' : '1.5px solid rgba(192,201,190,0.45)', borderRadius: '8px', background: contribForm.payment_method === method ? 'rgba(0,44,19,0.06)' : '#fafbfa', color: contribForm.payment_method === method ? '#002c13' : '#404941', fontWeight: contribForm.payment_method === method ? '700' : '500', fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-                          >
+                            style={{
+                              padding: '12px 8px',
+                              border: contribForm.payment_method === method ? '2px solid #002c13' : '1.5px solid rgba(192,201,190,0.45)',
+                              borderRadius: '8px',
+                              background: contribForm.payment_method === method ? 'rgba(0,44,19,0.06)' : '#fafbfa',
+                              color: contribForm.payment_method === method ? '#002c13' : '#404941',
+                              fontWeight: contribForm.payment_method === method ? '700' : '500',
+                              fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s'
+                            }}>
                             {method === 'EFT' && '🏦 '}{method === 'Cash' && '💵 '}{method === 'SnapScan' && '📱 '}{method === 'Other' && '💳 '}
                             {method}
                           </button>
@@ -1022,21 +648,30 @@ export default function GroupDashboard() {
                     <div style={s.fieldRow}>
                       <div style={s.field}>
                         <label style={s.label}>Payment Reference</label>
-                        <input type="text" style={s.input} value={contribForm.reference} onChange={e => setContribForm({ ...contribForm, reference: e.target.value })} placeholder="e.g. Bank reference number" />
+                        <input type="text" style={s.input} value={contribForm.reference}
+                          onChange={e => setContribForm({ ...contribForm, reference: e.target.value })}
+                          placeholder="e.g. Bank reference number" />
                       </div>
                       <div style={s.field}>
                         <label style={s.label}>Payment Date</label>
-                        <input type="date" style={s.input} value={contribForm.payment_date} onChange={e => setContribForm({ ...contribForm, payment_date: e.target.value })} />
+                        <input type="date" style={s.input} value={contribForm.payment_date}
+                          onChange={e => setContribForm({ ...contribForm, payment_date: e.target.value })} />
                       </div>
                     </div>
                     <div style={s.field}>
                       <label style={s.label}>Notes (optional)</label>
-                      <input type="text" style={s.input} value={contribForm.notes} onChange={e => setContribForm({ ...contribForm, notes: e.target.value })} placeholder="Any additional info for the treasurer" />
+                      <input type="text" style={s.input} value={contribForm.notes}
+                        onChange={e => setContribForm({ ...contribForm, notes: e.target.value })}
+                        placeholder="Any additional info for the treasurer" />
                     </div>
+                    {/* Proof of Payment */}
                     <div style={s.field}>
                       <label style={s.label}>Proof of Payment *</label>
-                      <div
-                        style={{ border: proofFile ? '1.5px solid #002c13' : '1.5px dashed rgba(192,201,190,0.6)', borderRadius: '8px', padding: '16px', background: proofFile ? 'rgba(0,44,19,0.03)' : '#fafbfa', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
+                      <div style={{
+                        border: proofFile ? '1.5px solid #002c13' : '1.5px dashed rgba(192,201,190,0.6)',
+                        borderRadius: '8px', padding: '16px', background: proofFile ? 'rgba(0,44,19,0.03)' : '#fafbfa',
+                        cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s'
+                      }}
                         onClick={() => document.getElementById('proof-upload').click()}
                       >
                         {proofFile ? (
@@ -1054,12 +689,15 @@ export default function GroupDashboard() {
                           </div>
                         )}
                         <input
-                          id="proof-upload" type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+                          id="proof-upload"
+                          type="file"
+                          accept="image/*,.pdf"
+                          style={{ display: 'none' }}
                           onChange={e => {
                             const file = e.target.files[0]
                             if (!file) return
                             const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']
-                            if (!allowed.includes(file.type)) { notify('error', 'Only images or PDF allowed'); return }
+                            if (!allowed.includes(file.type)) { notify('error', 'Only images (JPG, PNG, WEBP) or PDF allowed'); return }
                             if (file.size > 5 * 1024 * 1024) { notify('error', 'File must be under 5MB'); return }
                             setProofFile(file)
                           }}
@@ -1069,14 +707,16 @@ export default function GroupDashboard() {
                     </div>
                     <div style={{ background: 'rgba(254,212,136,0.15)', border: '1px solid rgba(254,212,136,0.4)', borderRadius: '8px', padding: '12px 16px' }}>
                       <p style={{ fontSize: '12px', color: '#775a19', margin: 0, lineHeight: 1.6 }}>
-                        ⚠️ Your contribution will be marked as <strong>pending</strong> until the treasurer confirms receipt of your payment.
+                        ⚠️ Your contribution will be marked as <strong>pending</strong> until the treasurer confirms receipt of your payment. Please ensure you have made the actual payment before submitting.
                       </p>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                      <button type="button" onClick={() => { setShowContribForm(false); setProofFile(null) }} style={{ padding: '11px 22px', background: 'transparent', border: '1.5px solid rgba(192,201,190,0.5)', borderRadius: '8px', fontSize: '14px', fontWeight: '600', color: '#404941', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <button type="button" onClick={() => { setShowContribForm(false); setProofFile(null) }}
+                        style={{ padding: '11px 22px', background: 'transparent', border: '1.5px solid rgba(192,201,190,0.5)', borderRadius: '8px', fontSize: '14px', fontWeight: '600', color: '#404941', cursor: 'pointer', fontFamily: 'inherit' }}>
                         Cancel
                       </button>
-                      <button type="submit" disabled={savingContrib || !contribForm.payment_method} style={{ ...s.btnPrimary, padding: '11px 28px', fontSize: '14px', opacity: (savingContrib || !contribForm.payment_method) ? 0.6 : 1 }}>
+                      <button type="submit" disabled={savingContrib || !contribForm.payment_method}
+                        style={{ ...s.btnPrimary, padding: '11px 28px', fontSize: '14px', opacity: (savingContrib || !contribForm.payment_method) ? 0.6 : 1 }}>
                         {uploadingProof ? 'Uploading proof…' : savingContrib ? 'Submitting…' : 'Submit Payment'}
                       </button>
                     </div>
@@ -1103,21 +743,22 @@ export default function GroupDashboard() {
                   <span style={s.statusPill(c.status)}>{c.status}</span>
                   <span style={s.tCellSub}>{c.payment_date ? new Date(c.payment_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) : '—'}</span>
                   <span style={s.tCellSub}>{c.payment_method ?? '—'}</span>
-                  <span style={{ fontSize: '16px' }} title={c.proof_of_payment ? 'Proof attached' : 'No proof'}>{c.proof_of_payment ? '📎' : '—'}</span>
+                  <span style={{ fontSize: '16px' }} title={c.proof_of_payment ? 'Proof attached' : 'No proof'}>
+                    {c.proof_of_payment ? '📎' : '—'}
+                  </span>
                   {(myRole === 'admin' || myRole === 'treasurer') && (
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {c.proof_of_payment && (
-                        <button style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.1)', color: '#1d4ed8', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => handleViewProof(c.proof_of_payment)}>
+                        <button style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.1)', color: '#1d4ed8', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
+                          onClick={() => handleViewProof(c.proof_of_payment)}>
                           📎 Proof
                         </button>
                       )}
-                      {c.status === 'pending' && (
-                        <>
-                          <button style={s.btnSuccess} onClick={() => handleConfirm(c.id)}>Confirm</button>
-                          <button style={s.btnDanger}  onClick={() => handleFlag(c.id)}>Flag</button>
-                        </>
-                      )}
-                      {c.status === 'missed'    && <button style={s.btnSuccess} onClick={() => handleUnflag(c.id)}>Unflag</button>}
+                      {c.status === 'pending' && <>
+                        <button style={s.btnSuccess} onClick={() => handleConfirm(c.id)}>Confirm</button>
+                        <button style={s.btnDanger}  onClick={() => handleFlag(c.id)}>Flag</button>
+                      </>}
+                      {c.status === 'missed' && <button style={s.btnSuccess} onClick={() => handleUnflag(c.id)}>Unflag</button>}
                       {c.status === 'confirmed' && !c.proof_of_payment && <span style={s.tCellSub}>—</span>}
                     </div>
                   )}
@@ -1138,43 +779,24 @@ export default function GroupDashboard() {
                 </button>
               )}
             </div>
-
             {showMeetingForm && (
               <div style={{ ...s.settingsCard, marginBottom: '24px', maxWidth: '100%' }}>
                 <form onSubmit={handleSaveMeeting} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <div style={s.fieldRow}>
-                    <div style={s.field}>
-                      <label style={s.label}>Title *</label>
-                      <input required style={s.input} value={meetingForm.title} onChange={e => setMeetingForm({ ...meetingForm, title: e.target.value })} placeholder="e.g. April Meeting" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Date & Time *</label>
-                      <input required type="datetime-local" style={s.input} value={meetingForm.meeting_date} onChange={e => setMeetingForm({ ...meetingForm, meeting_date: e.target.value })} />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Title *</label><input required style={s.input} value={meetingForm.title} onChange={e => setMeetingForm({ ...meetingForm, title: e.target.value })} placeholder="e.g. April Meeting" /></div>
+                    <div style={s.field}><label style={s.label}>Date & Time *</label><input required type="datetime-local" style={s.input} value={meetingForm.meeting_date} onChange={e => setMeetingForm({ ...meetingForm, meeting_date: e.target.value })} /></div>
                   </div>
                   <div style={s.fieldRow}>
-                    <div style={s.field}>
-                      <label style={s.label}>Location</label>
-                      <input style={s.input} value={meetingForm.location} onChange={e => setMeetingForm({ ...meetingForm, location: e.target.value })} placeholder="e.g. Community Hall" />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Online Link</label>
-                      <input style={s.input} value={meetingForm.meeting_link} onChange={e => setMeetingForm({ ...meetingForm, meeting_link: e.target.value })} placeholder="https://meet.google.com/..." />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Location</label><input style={s.input} value={meetingForm.location} onChange={e => setMeetingForm({ ...meetingForm, location: e.target.value })} placeholder="e.g. Community Hall" /></div>
+                    <div style={s.field}><label style={s.label}>Online Link</label><input style={s.input} value={meetingForm.meeting_link} onChange={e => setMeetingForm({ ...meetingForm, meeting_link: e.target.value })} placeholder="https://meet.google.com/..." /></div>
                   </div>
-                  <div style={s.field}>
-                    <label style={s.label}>Agenda</label>
-                    <textarea style={s.textarea} value={meetingForm.agenda} onChange={e => setMeetingForm({ ...meetingForm, agenda: e.target.value })} placeholder="Meeting agenda..." />
-                  </div>
+                  <div style={s.field}><label style={s.label}>Agenda</label><textarea style={s.textarea} value={meetingForm.agenda} onChange={e => setMeetingForm({ ...meetingForm, agenda: e.target.value })} placeholder="Meeting agenda..." /></div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="submit" disabled={savingMeeting} style={{ ...s.btnPrimary, opacity: savingMeeting ? 0.6 : 1 }}>
-                      {savingMeeting ? 'Saving…' : 'Save Meeting'}
-                    </button>
+                    <button type="submit" disabled={savingMeeting} style={{ ...s.btnPrimary, opacity: savingMeeting ? 0.6 : 1 }}>{savingMeeting ? 'Saving…' : 'Save Meeting'}</button>
                   </div>
                 </form>
               </div>
             )}
-
             {editingMeeting && (
               <div style={{ ...s.settingsCard, marginBottom: '24px', maxWidth: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1183,49 +805,23 @@ export default function GroupDashboard() {
                 </div>
                 <form onSubmit={handleEditMeeting} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <div style={s.fieldRow}>
-                    <div style={s.field}>
-                      <label style={s.label}>Title *</label>
-                      <input required style={s.input} value={editingMeeting.title} onChange={e => setEditingMeeting({ ...editingMeeting, title: e.target.value })} />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Date & Time *</label>
-                      <input required type="datetime-local" style={s.input} value={editingMeeting.meeting_date} onChange={e => setEditingMeeting({ ...editingMeeting, meeting_date: e.target.value })} />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Title *</label><input required style={s.input} value={editingMeeting.title} onChange={e => setEditingMeeting({ ...editingMeeting, title: e.target.value })} /></div>
+                    <div style={s.field}><label style={s.label}>Date & Time *</label><input required type="datetime-local" style={s.input} value={editingMeeting.meeting_date} onChange={e => setEditingMeeting({ ...editingMeeting, meeting_date: e.target.value })} /></div>
                   </div>
                   <div style={s.fieldRow}>
-                    <div style={s.field}>
-                      <label style={s.label}>Location</label>
-                      <input style={s.input} value={editingMeeting.location || ''} onChange={e => setEditingMeeting({ ...editingMeeting, location: e.target.value })} />
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Online Link</label>
-                      <input style={s.input} value={editingMeeting.meeting_link || ''} onChange={e => setEditingMeeting({ ...editingMeeting, meeting_link: e.target.value })} />
-                    </div>
+                    <div style={s.field}><label style={s.label}>Location</label><input style={s.input} value={editingMeeting.location || ''} onChange={e => setEditingMeeting({ ...editingMeeting, location: e.target.value })} /></div>
+                    <div style={s.field}><label style={s.label}>Online Link</label><input style={s.input} value={editingMeeting.meeting_link || ''} onChange={e => setEditingMeeting({ ...editingMeeting, meeting_link: e.target.value })} /></div>
                   </div>
-                  <div style={s.field}>
-                    <label style={s.label}>Agenda</label>
-                    <textarea style={s.textarea} value={editingMeeting.agenda || ''} onChange={e => setEditingMeeting({ ...editingMeeting, agenda: e.target.value })} />
-                  </div>
-                  <div style={s.field}>
-                    <label style={s.label}>Minutes</label>
-                    <textarea style={s.textarea} value={editingMeeting.minutes || ''} onChange={e => setEditingMeeting({ ...editingMeeting, minutes: e.target.value })} placeholder="Record meeting minutes here after the meeting..." />
-                  </div>
+                  <div style={s.field}><label style={s.label}>Agenda</label><textarea style={s.textarea} value={editingMeeting.agenda || ''} onChange={e => setEditingMeeting({ ...editingMeeting, agenda: e.target.value })} /></div>
+                  <div style={s.field}><label style={s.label}>Minutes</label><textarea style={s.textarea} value={editingMeeting.minutes || ''} onChange={e => setEditingMeeting({ ...editingMeeting, minutes: e.target.value })} placeholder="Record meeting minutes here after the meeting..." /></div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button type="button" style={{ ...s.btnDanger, padding: '8px 18px' }} onClick={() => setEditingMeeting(null)}>Cancel</button>
-                    <button type="submit" disabled={savingMeeting} style={{ ...s.btnPrimary, opacity: savingMeeting ? 0.6 : 1 }}>
-                      {savingMeeting ? 'Saving…' : 'Save Changes'}
-                    </button>
+                    <button type="submit" disabled={savingMeeting} style={{ ...s.btnPrimary, opacity: savingMeeting ? 0.6 : 1 }}>{savingMeeting ? 'Saving…' : 'Save Changes'}</button>
                   </div>
                 </form>
               </div>
             )}
-
-            {meetings.length === 0 && (
-              <div style={{ ...s.emptyRow, background: '#fff', borderRadius: '14px', padding: '40px' }}>
-                No meetings scheduled yet.
-              </div>
-            )}
-
+            {meetings.length === 0 && <div style={{ ...s.emptyRow, background: '#fff', borderRadius: '14px', padding: '40px' }}>No meetings scheduled yet.</div>}
             {meetings.map(m => (
               <div key={m.id} style={s.meetingCard}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
@@ -1238,12 +834,12 @@ export default function GroupDashboard() {
                   </div>
                   {(myRole === 'admin' || myRole === 'treasurer') && (
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button style={{ ...s.btnPrimary, fontSize: '12px', padding: '5px 12px' }} onClick={() => setEditingMeeting({ ...m, meeting_date: new Date(m.meeting_date).toISOString().slice(0, 16) })}>Edit</button>
+                      <button style={{ ...s.btnPrimary, fontSize: '12px', padding: '5px 12px' }} onClick={() => setEditingMeeting({ ...m, meeting_date: new Date(m.meeting_date).toISOString().slice(0,16) })}>Edit</button>
                       <button style={s.btnDanger} onClick={() => handleDeleteMeeting(m.id)}>Delete</button>
                     </div>
                   )}
                 </div>
-                {m.location    && <p style={{ fontSize: '13px', color: '#717970', margin: '4px 0' }}>📍 {m.location}</p>}
+                {m.location && <p style={{ fontSize: '13px', color: '#717970', margin: '4px 0' }}>📍 {m.location}</p>}
                 {m.meeting_link && <a href={m.meeting_link} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#775a19', fontWeight: '600' }}>🔗 Join Online</a>}
                 {m.agenda && (
                   <div style={{ marginTop: '12px', padding: '12px 14px', background: '#f8f9fa', borderRadius: '8px' }}>
@@ -1273,7 +869,6 @@ export default function GroupDashboard() {
                 </button>
               )}
             </div>
-
             {showPayoutForm && (
               <div style={{ ...s.settingsCard, marginBottom: '24px', maxWidth: '100%' }}>
                 <p style={{ fontWeight: '700', color: '#191c1d', margin: '0 0 16px' }}>Initiate Payout</p>
@@ -1283,14 +878,13 @@ export default function GroupDashboard() {
                       <label style={s.label}>Receiver *</label>
                       <select required style={s.select} value={payoutForm.receiver_id} onChange={e => setPayoutForm({ ...payoutForm, receiver_id: e.target.value })}>
                         <option value="">Select a member</option>
-                        {members.map(m => (
-                          <option key={m.user_id} value={m.user_id}>{m.profiles?.full_name ?? m.profiles?.email ?? 'Unknown'}</option>
-                        ))}
+                        {members.map(m => (<option key={m.user_id} value={m.user_id}>{m.profiles?.full_name ?? m.profiles?.email ?? 'Unknown'}</option>))}
                       </select>
                     </div>
                     <div style={s.field}>
                       <label style={s.label}>Amount (R) *</label>
-                      <input required type="number" min="1" style={s.input} value={payoutForm.amount} onChange={e => setPayoutForm({ ...payoutForm, amount: e.target.value })} placeholder={`e.g. ${totalPool}`} />
+                      <input required type="number" min="1" style={s.input} value={payoutForm.amount}
+                        onChange={e => setPayoutForm({ ...payoutForm, amount: e.target.value })} placeholder={`e.g. ${totalPool}`} />
                     </div>
                   </div>
                   <div style={s.field}>
@@ -1298,14 +892,11 @@ export default function GroupDashboard() {
                     <input type="date" style={s.input} value={payoutForm.payout_date} onChange={e => setPayoutForm({ ...payoutForm, payout_date: e.target.value })} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="submit" disabled={savingPayout} style={{ ...s.btnPrimary, opacity: savingPayout ? 0.6 : 1 }}>
-                      {savingPayout ? 'Initiating…' : 'Initiate Payout'}
-                    </button>
+                    <button type="submit" disabled={savingPayout} style={{ ...s.btnPrimary, opacity: savingPayout ? 0.6 : 1 }}>{savingPayout ? 'Initiating…' : 'Initiate Payout'}</button>
                   </div>
                 </form>
               </div>
             )}
-
             <div style={s.tableWrap}>
               <div style={s.tableHead(PAYOUT_COLS)}>
                 <span style={s.tableHCell}>Receiver</span>
@@ -1325,11 +916,8 @@ export default function GroupDashboard() {
                     <span style={s.statusPill(p.status)}>{p.status}</span>
                     {(myRole === 'admin' || myRole === 'treasurer') && (
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <select
-                          value={p.status}
-                          onChange={e => handleUpdatePayoutStatus(p.id, e.target.value)}
-                          style={{ padding: '5px 8px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}
-                        >
+                        <select value={p.status} onChange={e => handleUpdatePayoutStatus(p.id, e.target.value)}
+                          style={{ padding: '5px 8px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}>
                           <option value="pending">Pending</option>
                           <option value="completed">Completed</option>
                           <option value="cancelled">Cancelled</option>
@@ -1337,11 +925,13 @@ export default function GroupDashboard() {
                         {p.status === 'completed' && canSeeProof && !p.proof_of_payment && (
                           <label style={{ padding: '5px 10px', background: 'rgba(0,44,19,0.08)', color: '#002c13', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: uploadingPayoutProof ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                             {uploadingPayoutProof ? 'Uploading…' : '📎 Add Proof'}
-                            <input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => handleUploadPayoutProof(p.id, e.target.files[0])} />
+                            <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+                              onChange={e => handleUploadPayoutProof(p.id, e.target.files[0])} />
                           </label>
                         )}
                         {p.proof_of_payment && canSeeProof && (
-                          <button style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.1)', color: '#1d4ed8', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => handleViewPayoutProof(p.proof_of_payment)}>
+                          <button style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.1)', color: '#1d4ed8', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
+                            onClick={() => handleViewPayoutProof(p.proof_of_payment)}>
                             📎 View Proof
                           </button>
                         )}
@@ -1360,23 +950,11 @@ export default function GroupDashboard() {
             <p style={{ ...s.sectionTitle, marginBottom: '20px' }}>Group Settings</p>
             <div style={s.settingsCard}>
               <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '0px' }}>
-                <div style={s.field}>
-                  <label style={s.label}>Group Name</label>
-                  <input name="name" defaultValue={group.name} style={s.input} />
-                </div>
-                <div style={s.field}>
-                  <label style={s.label}>Description</label>
-                  <textarea name="description" defaultValue={group.description} style={s.textarea} />
-                </div>
+                <div style={s.field}><label style={s.label}>Group Name</label><input name="name" defaultValue={group.name} style={s.input} /></div>
+                <div style={s.field}><label style={s.label}>Description</label><textarea name="description" defaultValue={group.description} style={s.textarea} /></div>
                 <div style={s.fieldRow}>
-                  <div style={s.field}>
-                    <label style={s.label}>Contribution Amount (R)</label>
-                    <input name="contribution_amount" type="number" defaultValue={group.contribution_amount} style={s.input} />
-                  </div>
-                  <div style={s.field}>
-                    <label style={s.label}>Max Members</label>
-                    <input name="max_members" type="number" defaultValue={group.max_members} style={s.input} placeholder="Leave blank for unlimited" />
-                  </div>
+                  <div style={s.field}><label style={s.label}>Contribution Amount (R)</label><input name="contribution_amount" type="number" defaultValue={group.contribution_amount} style={s.input} /></div>
+                  <div style={s.field}><label style={s.label}>Max Members</label><input name="max_members" type="number" defaultValue={group.max_members} style={s.input} placeholder="Leave blank for unlimited" /></div>
                 </div>
                 <div style={s.fieldRow}>
                   <div style={s.field}>
