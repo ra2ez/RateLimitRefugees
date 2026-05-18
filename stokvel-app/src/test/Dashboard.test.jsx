@@ -15,7 +15,10 @@ vi.mock('../supabaseClient', () => ({
       onAuthStateChange: vi.fn(),
       signOut: vi.fn().mockResolvedValue({}),
     },
-    from: vi.fn(),
+    from:          vi.fn(),
+    // Dashboard uses supabase.channel() for realtime subscriptions — mock it so it doesn't crash
+    channel:       vi.fn().mockReturnValue({ on: vi.fn().mockReturnThis(), subscribe: vi.fn().mockReturnThis() }),
+    removeChannel: vi.fn(),
   },
 }))
 
