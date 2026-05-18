@@ -490,7 +490,7 @@ export default function GroupDashboard() {
     const { data: mems } = await supabase.from('group_members').select('role, user_id, joined_at, profiles(full_name, email)').eq('group_id', id)
     setMembers(mems ?? [])
 
-    const { data: contribs } = await supabase.from('contributions').select('id, user_id, amount, status, payment_date, payment_method, proof_of_payment, profiles(full_name)').eq('group_id', id).order('created_at', { ascending: false })
+    const { data: contribs } = await supabase.from('contributions').select('id, user_id, amount, status, payment_date, payment_method, proof_of_payment, reference, profiles(full_name)').eq('group_id', id).order('created_at', { ascending: false })
     setContributions(contribs ?? [])
 
     const { data: meets } = await supabase.from('meetings').select('*').eq('group_id', id).order('meeting_date', { ascending: true })
@@ -620,6 +620,8 @@ export default function GroupDashboard() {
 
   const handleUploadPayoutProof = async (payoutId, file) => {
     if (!file) return
+    const existing = payouts.find(p => p.id === payoutId)
+    if (existing?.proof_of_payment) { notify('error', 'Proof already uploaded for this payout.'); return }
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
     if (!allowed.includes(file.type)) { notify('error', 'Only images or PDF allowed'); return }
     if (file.size > 5 * 1024 * 1024) { notify('error', 'File must be under 5MB'); return }
@@ -701,7 +703,8 @@ export default function GroupDashboard() {
   const proj24m    = primeRate ? projectSavings(totalPool, primeRate, 24) : null
 
   const MEMBER_COLS  = myRole === 'admin' ? '1fr 120px 140px 120px' : '1fr 120px 140px'
-  const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 60px 120px' : '100px 110px 120px 100px 60px'
+  const CONTRIB_COLS = myRole !== 'member' ? '1fr 100px 110px 120px 100px 120px 60px 120px' : '100px 110px 120px 100px 120px 60px'
+  
   const PAYOUT_COLS  = myRole === 'member' ? '1fr 120px 120px 110px' : '1fr 120px 120px 110px 140px'
 
   const builtNotifs   = buildGroupNotifications(contributions, meetings, payouts, members, currentUser?.id, myRole, group)
@@ -981,7 +984,7 @@ export default function GroupDashboard() {
               </p>
               <button style={s.btnPrimary} onClick={() => {
                 if (!showContribForm) {
-                  setContribForm({ amount: group.contribution_amount, payment_method: '', payment_date: '', reference: '', notes: '' })
+                  setContribForm({ amount: group.contribution_amount, payment_method: '', payment_date: new Date().toISOString().split('T')[0], reference: '', notes: '' })
                   setProofFile(null)
                 }
                 setShowContribForm(!showContribForm)
@@ -1092,6 +1095,7 @@ export default function GroupDashboard() {
                 <span style={s.tableHCell}>Status</span>
                 <span style={s.tableHCell}>Date</span>
                 <span style={s.tableHCell}>Method</span>
+                <span style={s.tableHCell}>Reference</span>
                 <span style={s.tableHCell}>Proof</span>
                 {(myRole === 'admin' || myRole === 'treasurer') && <span style={s.tableHCell}>Actions</span>}
               </div>
@@ -1103,7 +1107,8 @@ export default function GroupDashboard() {
                   <span style={s.statusPill(c.status)}>{c.status}</span>
                   <span style={s.tCellSub}>{c.payment_date ? new Date(c.payment_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) : '—'}</span>
                   <span style={s.tCellSub}>{c.payment_method ?? '—'}</span>
-                  <span style={{ fontSize: '16px' }} title={c.proof_of_payment ? 'Proof attached' : 'No proof'}>{c.proof_of_payment ? '📎' : '—'}</span>
+                  <span style={s.tCellSub}>{c.reference ?? '—'}</span>
+                  <span style={{ fontSize: '16px' }} title={c.proof_of_payment ? 'Proof attached' : 'No proof'}></span>
                   {(myRole === 'admin' || myRole === 'treasurer') && (
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {c.proof_of_payment && (
@@ -1325,15 +1330,16 @@ export default function GroupDashboard() {
                     <span style={s.statusPill(p.status)}>{p.status}</span>
                     {(myRole === 'admin' || myRole === 'treasurer') && (
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <select
-                          value={p.status}
-                          onChange={e => handleUpdatePayoutStatus(p.id, e.target.value)}
-                          style={{ padding: '5px 8px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
+                        {p.status === 'completed' ? (
+                          <span style={s.statusPill('completed')}>completed</span>
+                        ) : (
+                          <select value={p.status} onChange={e => handleUpdatePayoutStatus(p.id, e.target.value)}
+                            style={{ padding: '5px 8px', border: '1.5px solid rgba(192,201,190,0.45)', borderRadius: '6px', fontSize: '12px', outline: 'none', cursor: 'pointer', background: '#fafbfa' }}>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        )}
                         {p.status === 'completed' && canSeeProof && !p.proof_of_payment && (
                           <label style={{ padding: '5px 10px', background: 'rgba(0,44,19,0.08)', color: '#002c13', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: uploadingPayoutProof ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                             {uploadingPayoutProof ? 'Uploading…' : '📎 Add Proof'}
