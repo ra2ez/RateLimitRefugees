@@ -11,6 +11,7 @@ import CreateGroup from './pages/CreateGroup'
 import JoinGroup from './pages/JoinGroup'
 import GroupDashboard from './pages/GroupDashboard'
 import Analytics from './pages/Analytics'
+import ResetPassword from './pages/ResetPassword'
 
 function App() {
   const [session, setSession] = useState(undefined) // undefined = still checking
@@ -34,6 +35,7 @@ function App() {
         {/* Public */}
         <Route path="/" element={<Home />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Guest only — redirect to dashboard if already logged in */}
         <Route path="/login"  element={session ? <Navigate to="/dashboard" replace /> : <Login />} />

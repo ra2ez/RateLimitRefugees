@@ -21,18 +21,23 @@ const focusInput = (e) => { e.target.style.borderColor='#002c13'; e.target.style
 const blurInput  = (e) => { e.target.style.borderColor='rgba(192,201,190,0.4)'; e.target.style.boxShadow='0 1px 3px rgba(25,28,29,0.04)' }
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState('')
+  const [email,   setEmail]   = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error,   setError]   = useState('')
   const [success, setSuccess] = useState(false)
 
   const handleReset = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email)
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+
     if (error) setError(error.message)
     else setSuccess(true)
+
     setLoading(false)
   }
 
@@ -40,22 +45,24 @@ export default function ForgotPassword() {
     <div style={s.page}>
       <div style={s.card}>
         <h1 style={s.h1}>Forgot password?</h1>
-        <p style={s.sub}>Enter your email and we'll send you a reset link.</p>
+        <p style={s.sub}>Enter your registered email and we will send you a reset link.</p>
 
-        {error && <div style={s.error}>{error}</div>}
-        {success && <div style={s.success}>Reset link sent! Check your email.</div>}
+        {error   && <div style={s.error}>{error}</div>}
+        {success && <div style={s.success}>If this email is registered you will receive a reset link shortly.</div>}
 
         <form onSubmit={handleReset}>
           <div style={s.field}>
             <label style={s.label}>Email address</label>
             <input
-              type="email" required value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com" onFocus={focusInput} onBlur={blurInput}
+              type="email" required value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              onFocus={focusInput} onBlur={blurInput}
               style={s.input}
             />
           </div>
           <button type="submit" disabled={loading} style={{ ...s.btn, opacity: loading ? 0.65 : 1 }}>
-            {loading ? 'Sending…' : 'Send reset link'}
+            {loading ? 'Sending...' : 'Send reset link'}
           </button>
         </form>
 
