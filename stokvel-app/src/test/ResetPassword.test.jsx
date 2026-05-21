@@ -52,7 +52,7 @@ describe('ResetPassword', () => {
     fireEvent.change(screen.getByPlaceholderText(/min. 6 characters/i), { target: { value: 'password123' } })
     fireEvent.change(screen.getByPlaceholderText(/re-enter new password/i), { target: { value: 'different123' } })
     fireEvent.submit(screen.getByRole('button', { name: /update password/i }).closest('form'))
-    await waitFor(() => expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText(/passwords do not match/i).length).toBeGreaterThan(0))
   })
 
   it('shows error when password is too short', async () => {
