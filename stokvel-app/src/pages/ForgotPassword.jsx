@@ -48,7 +48,7 @@ export default function ForgotPassword() {
         <p style={s.sub}>Enter your registered email and we will send you a reset link.</p>
 
         {error   && <div style={s.error}>{error}</div>}
-        {success && <div style={s.success}>If this email is registered you will receive a reset link shortly.</div>}
+        {success && <div style={s.success}>Reset link sent! Check your email.</div>}
 
         <form onSubmit={handleReset}>
           <div style={s.field}>
