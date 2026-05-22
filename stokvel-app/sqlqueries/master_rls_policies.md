@@ -151,6 +151,7 @@ create policy "Admins can remove members"
     )
   );
 
+
 -- Members can remove themselves (leave a group)
 create policy "Members can leave groups"
   on public.group_members for delete
@@ -199,7 +200,55 @@ create policy "Treasurers can update contributions"
     )
   );
 ```
+---
 
+## Contributions Enhancements & Proof Uploads
+
+```sql
+-- Additional contribution metadata
+alter table public.contributions
+add column if not exists reference text null;
+
+alter table public.contributions
+add column if not exists notes text null;
+
+alter table public.contributions
+add column if not exists proof_of_payment text null;
+
+-- Members can upload contribution proof files
+create policy "Users can upload their own proof"
+on storage.objects for insert
+with check (
+  bucket_id = 'payment-proofs'
+  and auth.uid() is not null
+);
+
+-- Group members can view uploaded contribution proofs
+create policy "Group members can view proofs"
+on storage.objects for select
+using (
+  bucket_id = 'payment-proofs'
+  and auth.uid() is not null
+);
+```
+
+---
+
+## Payout Proof Uploads
+
+```sql
+-- Add payout proof reference
+alter table public.payouts
+add column if not exists proof_of_payment text null;
+
+-- Only authenticated users can access payout proof files
+create policy "Only receiver and initiator can view payout proof"
+on storage.objects for select
+using (
+  bucket_id = 'payout-proofs'
+  and auth.uid() is not null
+);
+```
 ---
 
 ## Payouts Table
